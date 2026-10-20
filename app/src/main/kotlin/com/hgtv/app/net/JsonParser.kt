@@ -15,6 +15,13 @@ object JsonParser {
         return v
     }
 
+    /** 只解析首个 JSON 值并忽略尾部（等价 Go json.Decoder.Decode，用于 HTML 内嵌 JSON）。 */
+    fun parsePrefix(text: String): Any? {
+        val p = P(text)
+        p.skipWs()
+        return p.value()
+    }
+
     private class P(val s: String) {
         var pos = 0
         fun eof() = pos >= s.length

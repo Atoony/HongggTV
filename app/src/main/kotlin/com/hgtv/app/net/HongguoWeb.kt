@@ -370,7 +370,7 @@ class HongguoWeb(
 
     private fun parseRouterData(html: String): Map<String, Any?>? {
         val idx = Regex("(?:window\\.)?_ROUTER_DATA\\s*=\\s*").find(html) ?: return null
-        return runCatching { JsonParser.parse(html.substring(idx.range.first + idx.value.length)) as? Map<String, Any?> }.getOrNull()
+        return runCatching { JsonParser.parsePrefix(html.substring(idx.range.first + idx.value.length)) as? Map<String, Any?> }.getOrNull()
     }
 
     private fun dramaFromMap(m: Map<String, Any?>, fallbackTitle: String = ""): WebDrama? {

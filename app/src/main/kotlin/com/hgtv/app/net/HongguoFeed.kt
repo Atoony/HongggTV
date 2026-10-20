@@ -89,7 +89,7 @@ class HongguoFeed(
         )
     }
 
-    /** Web 热播榜（SPEC §6.1：/rank/hot-drama，loaderData.rank_hot-drama/page.content.rankList）。 */
+    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；content 为空时走 mergeLoaderData script 标签）。 */
     fun hotDramaRank(): List<RankItem> {
         val (status, body) = webRawGet("/rank/hot-drama")
         if (status != 200 || body.isEmpty()) throw IllegalStateException("热播榜请求失败 HTTP $status")
@@ -97,7 +97,13 @@ class HongguoFeed(
         val router = parseRouter(html) ?: throw IllegalStateException("热播榜解析失败")
         val loader = JsonParser.nested(router, "loaderData", "rank_hot-drama/page")
             ?: throw IllegalStateException("热播榜解析失败")
-        val content = JsonParser.obj(loader["content"]) ?: throw IllegalStateException("热播榜解析失败")
+        var content = JsonParser.obj(loader["content"]) ?: emptyMap()
+        if (content["rankList"] == null) {
+            content = extractMergedContent(html, "rank_hot-drama/page") ?: emptyMap()
+        }
+        if (content["isSuccess"] != true || content["rankList"] == null) {
+            throw IllegalStateException("热播榜解析失败")
+        }
         val rows = JsonParser.arr(content["rankList"]) ?: emptyList()
         val out = ArrayList<RankItem>()
         for (row in rows) {
@@ -144,6 +150,29 @@ class HongguoFeed(
 
     private fun parseRouter(html: String): Map<String, Any?>? {
         val idx = Regex("(?:window\\.)?_ROUTER_DATA\\s*=\\s*").find(html) ?: return null
-        return runCatching { JsonParser.parse(html.substring(idx.range.first + idx.value.length)) as? Map<String, Any?> }.getOrNull()
+        return runCatching { JsonParser.parsePrefix(html.substring(idx.range.first + idx.value.length)) as? Map<String, Any?> }.getOrNull()
     }
+
+    /** mergeLoaderData script 标签 fallback：args=[key,[{key:"content",routerDataFnArgs:["{...}"]}]]（HTML 实体 + 双重 JSON）。 */
+    private fun extractMergedContent(html: String, loaderKey: String): Map<String, Any?>? {
+        val tagRe = Regex("""<script[^>]*data-fn-name="mergeLoaderData"[^>]*>""")
+        for (m in tagRe.findAll(html)) {
+            val tag = m.value
+            val attr = Regex("""data-fn-args="([^"]*)"""").find(tag)?.groupValues?.get(1) ?: continue
+            val args = runCatching { JsonParser.parse(htmlUnescape(attr)) as? List<Any?> }.getOrNull() ?: continue
+            if (args.getOrNull(0) as? String != loaderKey) continue
+            val desc = (args.getOrNull(1) as? List<Any?>)?.firstOrNull() as? Map<String, Any?> ?: continue
+            if (desc["key"] != "content") continue
+            val inner = (desc["routerDataFnArgs"] as? List<Any?>)?.firstOrNull() as? String ?: continue
+            return runCatching { JsonParser.parse(inner) as? Map<String, Any?> }.getOrNull()
+        }
+        return null
+    }
+
+    private fun htmlUnescape(s: String): String = s
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
 }
