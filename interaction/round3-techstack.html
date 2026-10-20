@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红果 TV App · 票 08 技术栈拍板</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #1a1d24; --card-border: #2a2e38;
+    --text: #e8eaed; --text-dim: #9aa0ab;
+    --accent: #ff7043; --accent-soft: rgba(255, 112, 67, 0.12);
+    --recommend: #4caf8d; --recommend-soft: rgba(76, 175, 141, 0.12);
+    --warn: #d4a72c; --warn-soft: rgba(212, 167, 44, 0.12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding-bottom: 120px; }
+  .container { max-width: 880px; margin: 0 auto; padding: 32px 24px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header h1 .tag { font-size: 12px; font-weight: 500; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 2px 8px; vertical-align: 3px; margin-left: 10px; }
+  header p { color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+  header p b { color: var(--text); }
+
+  .factbox { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; }
+  .factbox h2 { font-size: 16px; margin-bottom: 12px; }
+  .factbox h2 span { font-size: 12px; font-weight: 500; color: var(--text-dim); margin-left: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--card-border); vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+  .win { color: var(--recommend); font-weight: 600; }
+  .lose { color: var(--warn); }
+  .factnote { font-size: 12.5px; color: var(--text-dim); margin-top: 10px; }
+  .factnote b { color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card.done { border-color: var(--recommend); }
+  .q-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .q-num { color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .q-title { font-size: 17px; font-weight: 600; }
+  .q-body { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; }
+  .option { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .option:hover { border-color: #4a5060; }
+  .option.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .opt-key { font-weight: 700; color: var(--text-dim); flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--card-border); font-size: 13px; margin-top: 2px; }
+  .option.selected .opt-key { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt-body { flex: 1; }
+  .opt-label { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge-rec { font-size: 11px; font-weight: 600; color: var(--recommend); background: var(--recommend-soft); padding: 1px 8px; border-radius: 4px; }
+  .badge-warn { font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-soft); padding: 1px 8px; border-radius: 4px; }
+  .opt-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+  .opt-desc ul { margin: 6px 0 0 18px; padding: 0; }
+  .opt-desc li { margin-bottom: 3px; }
+  .other-row { margin-top: 6px; }
+  .other-row label { font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+  .other-row textarea { width: 100%; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 44px; }
+  .other-row textarea:focus { outline: none; border-color: var(--accent); }
+  .status { font-size: 12px; margin-top: 10px; color: var(--recommend); display: none; }
+  .card.done .status { display: block; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(15, 17, 21, 0.92); backdrop-filter: blur(8px); border-top: 1px solid var(--card-border); padding: 14px 24px; z-index: 10; }
+  .footer-inner { max-width: 880px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+  .progress-note { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .btn-main { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-main:hover { filter: brightness(1.1); }
+  .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
+  .modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 20; align-items: center; justify-content: center; padding: 24px; }
+  .modal-mask.show { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; width: 100%; max-width: 680px; padding: 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal textarea { width: 100%; min-height: 200px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-size: 13px; font-family: Consolas, monospace; line-height: 1.6; resize: vertical; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 14px; justify-content: flex-end; }
+  .btn-copy { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-close { background: transparent; color: var(--text-dim); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .copied-hint { color: var(--recommend); font-size: 13px; align-self: center; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>红果 TV App <span class="tag">票 08 · 技术栈拍板</span></h1>
+    <p>研究票 05 的对比事实如下表。拍板是你的：<b>绿色 = 该维度占优方</b>。研究子代理的倾向已标注在选项上，供参考。</p>
+  </header>
+
+  <div class="factbox">
+    <h2>五维对比事实 <span>来源：2026-10-19 一手抓取，详见票 05</span></h2>
+    <table>
+      <tr><th>维度</th><th>原生（Kotlin + Compose for TV）</th><th>Flutter</th></tr>
+      <tr>
+        <td>焦点控制</td>
+        <td class="win">✅ tv-material 已 1.1.0 stable；focusRestorer() 是官方一等焦点记忆 API；Leanback 已弃用、Google 主推 Compose for TV</td>
+        <td class="lose">❌ 官方明确"Android TV 不是受支持目标"（umbrella #180542 仅 P3）；焦点记忆无官方 API，唯一活跃社区库 fluttercandies/dpad</td>
+      </tr>
+      <tr>
+        <td>视频播放器</td>
+        <td class="win">✅ Media3 1.11.1 stable 全套官方支持：HLS / AES-128 / 倍速保音调 / PreloadManager / Compose 集成</td>
+        <td class="lose">❌ video_player 有 Amlogic/MediaTek 盒子 100% 复现的 open 回归 #155355；media_kit 声明"有限维护"且不支持 DRM</td>
+      </tr>
+      <tr>
+        <td>Go 层接入</td>
+        <td class="win">✅ 决定性发现：guoapp 的桥是 c-shared .so + dart:ffi（非 gomobile）→ 原生只需约 30 行 Kotlin JNI 即可<b>零改动</b>复用全部约 2.4 万行 Go 资产，两路线接入成本持平</td>
+        <td>✅ 现状即如此（guoapp 已用）</td>
+      </tr>
+      <tr>
+        <td>国产盒子兼容</td>
+        <td class="win">✅ minSdk 自主可控；国内侧载不受 64 位政策约束</td>
+        <td class="lose">❌ minSdk 24 硬下限（Android 6 老盒子出局）；Impeller 在 PowerVR/老 Mali 有未修 P2 bug；加 Amlogic 视频回归共三重已知风险</td>
+      </tr>
+      <tr>
+        <td>单人开发效率</td>
+        <td class="lose">需要从 Flutter 转 Kotlin 的学习成本；UI 无热重载</td>
+        <td class="win">✅ 你已熟练 + guoapp 模式直接复用 + 热重载</td>
+      </tr>
+    </table>
+    <div class="factnote">附带渠道事实：当贝市场上架硬性要求<b>遥控器适配 + 软著 + ICP 备案</b>（2024-04 后未备案全量下架）——与栈无关但影响未来分发。未证实事项（倍速音调行为、Impeller 强制开关等）已在票 05 内逐条标注。</div>
+  </div>
+
+  <div class="card" data-q="1" data-name="技术栈拍板">
+    <div class="q-head"><span class="q-num">Q1</span><span class="q-title">票 08：TV App 技术栈拍板</span></div>
+    <div class="q-body">本项目两大硬需求（遥控焦点为核心、国产盒子为目标设备）恰好命中原生强项；唯一 Flutter 优势是你的开发熟练度。</div>
+    <div class="option" data-value="原生 Kotlin + Compose for TV + Media3">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">原生 Kotlin + Compose for TV + Media3 <span class="badge-rec">研究倾向此方案</span></div>
+        <div class="opt-desc">
+          <ul>
+            <li>焦点、播放器、盒子兼容、Go 复用四维全占优</li>
+            <li>Go 资产零改动复用（~30 行 JNI 接上 c-shared .so）</li>
+            <li>代价：你从 Flutter 转 Kotlin 的学习曲线、无热重载</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="option" data-value="Flutter（延续 guoapp 路线）">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">Flutter（延续 guoapp 路线） <span class="badge-warn">需接受一揽子工程前提</span></div>
+        <div class="opt-desc">
+          <ul>
+            <li>必须接受：dpad 社区包为焦点基座、Amlogic 盒子 platform-view fallback、放弃 Android 6 盒子、PowerVR 真机验证</li>
+            <li>优势：你的熟练度 + 热重载 + guoapp 模式复用</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（自定义方案 / 疑问 / 需要补充的研究，可选）</label>
+      <textarea placeholder="例如：选 a，但希望先看一个 Compose for TV 的焦点 demo 再最终确认……"></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="card" data-q="2" data-name="下一步">
+    <div class="q-head"><span class="q-num">Q2</span><span class="q-title">拍板后下一张开工的票？</span></div>
+    <div class="q-body">当前前沿：票 10（信息架构设计，已解锁）可开工；票 04（取流诊断）仍在后台跑，结果出来后票 09（播放方案）解锁。</div>
+    <div class="option" data-value="开工票 10（信息架构设计）">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">开工票 10：页面级信息架构与导航设计 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">spec 核心生产票、工作量最大；输入（blbl 借鉴点+导航基线）已齐，与票 04 无依赖；产出低保真布局+焦点流转规则的 HTML 原型给你过目</div>
+      </div>
+    </div>
+    <div class="option" data-value="等票 04 取流诊断结果再动">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">等票 04（取流诊断）出结果再继续</div>
+        <div class="opt-desc">播放是唯一硬阻塞，先看诊断结论再决定整体节奏（若需要真机抓包配合，会开 task 票）</div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（可选）</label>
+      <textarea placeholder=""></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="progress-note" id="progress-note">已作答 0 / 2</div>
+    <button class="btn-main" id="btn-generate" disabled>生成答案并复制</button>
+  </div>
+</footer>
+
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <h3>答案已生成 —— 复制下面的文本，粘贴回 Claude 会话</h3>
+    <textarea id="answer-text" readonly></textarea>
+    <div class="modal-actions">
+      <span class="copied-hint" id="copied-hint">✓ 已复制到剪贴板</span>
+      <button class="btn-close" id="btn-close">关闭</button>
+      <button class="btn-copy" id="btn-copy">复制</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cards = Array.from(document.querySelectorAll('.card'));
+  const btnGenerate = document.getElementById('btn-generate');
+  const progressNote = document.getElementById('progress-note');
+
+  function updateProgress() {
+    const answered = cards.filter(c => c.dataset.answer).length;
+    progressNote.textContent = `已作答 ${answered} / ${cards.length}`;
+    btnGenerate.disabled = answered < cards.length;
+  }
+
+  cards.forEach(card => {
+    const options = card.querySelectorAll('.option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        options.forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        card.dataset.answer = opt.dataset.value;
+        card.classList.add('done');
+        updateProgress();
+      });
+    });
+  });
+
+  function buildAnswer() {
+    let out = '## 票 08 拍板 + 下一步\n\n';
+    cards.forEach(card => {
+      const q = card.dataset.q, name = card.dataset.name;
+      const other = card.querySelector('textarea').value.trim();
+      out += `Q${q}（${name}）：${card.dataset.answer}\n`;
+      if (other) out += `　补充：${other}\n`;
+      out += '\n';
+    });
+    out += '（请在此追加任何说明，或直接粘贴回会话）';
+    return out;
+  }
+
+  btnGenerate.addEventListener('click', () => {
+    document.getElementById('answer-text').value = buildAnswer();
+    document.getElementById('modal-mask').classList.add('show');
+    copyAnswer();
+  });
+
+  function copyAnswer() {
+    const ta = document.getElementById('answer-text');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+      document.getElementById('copied-hint').style.display = 'inline';
+      setTimeout(() => document.getElementById('copied-hint').style.display = 'none', 2000);
+    }).catch(() => { document.execCommand('copy'); });
+  }
+
+  document.getElementById('btn-copy').addEventListener('click', copyAnswer);
+  document.getElementById('btn-close').addEventListener('click', () => document.getElementById('modal-mask').classList.remove('show'));
+  document.getElementById('modal-mask').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+</script>
+</body>
+</html>

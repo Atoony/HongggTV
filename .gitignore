@@ -1,0 +1,19 @@
+# 构建
+build/
+app/build/
+.gradle/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# 系统临时
+.DS_Store
+Thumbs.db
+
+# 设计与临时工作区（不进版本库）
+.scratch/
+
+# 参考项目（不进本库）
+guoapp/

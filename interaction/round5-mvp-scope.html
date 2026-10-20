@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红果 TV App · 票 10 第一期范围收敛(MVP)</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #1a1d24; --card-border: #2a2e38;
+    --text: #e8eaed; --text-dim: #9aa0ab;
+    --accent: #ff7043; --accent-soft: rgba(255, 112, 67, 0.12);
+    --recommend: #4caf8d; --recommend-soft: rgba(76, 175, 141, 0.12);
+    --defer: #8a93a6; --defer-soft: rgba(138, 147, 166, 0.10);
+    --poster: #262b36; --poster2: #2e3442;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding-bottom: 120px; }
+  .container { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header h1 .tag { font-size: 12px; font-weight: 500; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 2px 8px; vertical-align: 3px; margin-left: 10px; }
+  header p { color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+  header p b { color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .sec-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sec-title .pill { font-size: 11px; color: var(--text-dim); background: #12141a; border: 1px solid var(--card-border); border-radius: 4px; padding: 1px 8px; font-weight: 500; }
+  .sec-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 14px; }
+  .sec-sub b { color: var(--recommend); }
+
+  /* ===== 对比条 ===== */
+  .cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .cmp-box { border-radius: 10px; padding: 14px 16px; font-size: 13px; }
+  .cmp-box.old { background: #14161c; border: 1px solid var(--card-border); color: var(--text-dim); }
+  .cmp-box.new { background: var(--recommend-soft); border: 1px solid var(--recommend); }
+  .cmp-box h4 { font-size: 13px; margin-bottom: 8px; }
+  .cmp-box.old h4 { color: var(--defer); }
+  .cmp-box.new h4 { color: var(--recommend); }
+  .cmp-box ul { list-style: none; }
+  .cmp-box li { padding: 2px 0; }
+  .cmp-box li.cut { text-decoration: line-through; opacity: 0.55; }
+  .cmp-box li b { color: var(--text); }
+
+  /* ===== TV mockup ===== */
+  .tv { background: #000; border-radius: 10px; padding: 12px; display: flex; gap: 10px; margin-bottom: 14px; }
+  .sidebar { width: 88px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+  .nav-item { height: 34px; border-radius: 6px; background: #191d26; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+  .nav-item .ico { width: 14px; height: 14px; border-radius: 3px; background: #3a4152; flex-shrink: 0; }
+  .nav-item span { font-size: 10px; color: #6b7280; }
+  .nav-item.focus { background: var(--accent-soft); outline: 2px solid var(--accent); }
+  .nav-item.focus .ico { background: var(--accent); }
+  .nav-item.focus span { color: var(--text); }
+  .nav-item.cut { opacity: 0.35; }
+  .nav-item.cut span { text-decoration: line-through; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .row-label { font-size: 10px; color: #6b7280; display: flex; justify-content: space-between; }
+  .prow { display: flex; gap: 8px; }
+  .poster { aspect-ratio: 9/16; height: 86px; border-radius: 5px; background: var(--poster); position: relative; flex-shrink: 0; }
+  .poster .tagp { position: absolute; bottom: 4px; left: 4px; font-size: 8px; background: rgba(0,0,0,0.7); color: #9aa0ab; border-radius: 2px; padding: 0 3px; }
+  .poster .prog { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.15); }
+  .poster .prog i { display: block; height: 100%; background: var(--accent); }
+  .poster.focus { outline: 2px solid var(--accent); outline-offset: 1px; transform: scale(1.06); background: var(--poster2); z-index: 2; }
+
+  .keypts { font-size: 13.5px; color: var(--text-dim); }
+  .keypts li { margin: 4px 0 0 20px; }
+  .keypts b { color: var(--text); }
+  .focusflow { margin-top: 12px; background: #12141a; border: 1px solid var(--card-border); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-dim); }
+  .focusflow b { color: var(--accent); font-weight: 600; }
+
+  /* ===== 播放器 ===== */
+  .player-stage { position: relative; height: 260px; background: #000; border-radius: 10px; overflow: hidden; margin-bottom: 8px; }
+  .p-video { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); height: 96%; aspect-ratio: 9/16; background: linear-gradient(180deg, #262b36, #1a1e28); border-radius: 4px; }
+  .p-osd { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 11px; color: rgba(255,255,255,0.8); background: rgba(0,0,0,0.55); border-radius: 4px; padding: 3px 12px; white-space: nowrap; }
+  .p-hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 10px; color: rgba(255,255,255,0.45); }
+  .p-ctrl { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px; background: linear-gradient(transparent, rgba(0,0,0,0.88)); display: flex; align-items: center; gap: 12px; }
+  .p-ctrl .btn { min-width: 26px; height: 26px; padding: 0 8px; border-radius: 13px; background: rgba(255,255,255,0.12); display: flex; align-items: center; justify-content: center; font-size: 10px; color: #ddd; }
+  .p-ctrl .btn.focus { outline: 2px solid var(--accent); }
+  .p-ctrl .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.18); position: relative; }
+  .p-ctrl .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 34%; background: var(--accent); border-radius: 2px; }
+  .p-ctrl .time { font-size: 10px; color: #9aa0ab; }
+  .p-overlay { position: absolute; inset: 0; background: rgba(8,10,14,0.92); padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; }
+  .p-overlay .oh { font-size: 12px; color: var(--text); font-weight: 600; }
+  .p-overlay .oh span { font-weight: 400; color: var(--text-dim); font-size: 10px; }
+  .sel-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .sel-chip { height: 30px; border-radius: 6px; background: #1d222c; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #9aa0ab; }
+  .sel-chip.watched { background: #14171e; color: #454b58; }
+  .sel-chip.now { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+  .sel-chip.focus { background: var(--poster2); outline: 2px solid var(--accent); color: #fff; }
+  .stage-label { font-size: 12px; color: var(--text-dim); margin: 10px 0 6px; }
+  .stage-label b { color: var(--accent); }
+
+  /* ===== 键位表 ===== */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--card-border); vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+  td:first-child { white-space: nowrap; font-weight: 600; color: var(--accent); }
+
+  /* ===== 砍留 toggle ===== */
+  .scope-group { font-size: 12px; font-weight: 600; margin: 18px 0 8px; letter-spacing: 1px; }
+  .scope-group.keep { color: var(--recommend); }
+  .scope-group.defer { color: var(--defer); }
+  .scope-row { display: flex; align-items: center; gap: 14px; border: 1px solid var(--card-border); border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+  .scope-row:hover { border-color: #4a5060; }
+  .scope-row .s-name { font-size: 14px; font-weight: 600; flex-shrink: 0; }
+  .scope-row .s-desc { font-size: 12.5px; color: var(--text-dim); flex: 1; }
+  .scope-state { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 10px; flex-shrink: 0; white-space: nowrap; }
+  .scope-row.keep { border-color: rgba(76,175,141,0.45); background: rgba(76,175,141,0.05); }
+  .scope-row.keep .scope-state { color: var(--recommend); background: var(--recommend-soft); }
+  .scope-row.defer { opacity: 0.75; }
+  .scope-row.defer .s-name { color: var(--defer); }
+  .scope-row.defer .scope-state { color: var(--defer); background: var(--defer-soft); }
+  .scope-note { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+  /* ===== 确认题 ===== */
+  .qcard { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .qcard.done { border-color: var(--recommend); }
+  .q-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .q-num { color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .q-title { font-size: 17px; font-weight: 600; }
+  .q-body { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; }
+  .option { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  .option:hover { border-color: #4a5060; }
+  .option.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .opt-key { font-weight: 700; color: var(--text-dim); flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--card-border); font-size: 13px; margin-top: 2px; }
+  .option.selected .opt-key { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt-body { flex: 1; }
+  .opt-label { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge-rec { font-size: 11px; font-weight: 600; color: var(--recommend); background: var(--recommend-soft); padding: 1px 8px; border-radius: 4px; }
+  .opt-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+  .option textarea { width: 100%; margin-top: 8px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 44px; }
+  .option textarea:focus { border-color: var(--accent); outline: none; }
+  .status { font-size: 12px; margin-top: 10px; color: var(--recommend); display: none; }
+  .qcard.done .status { display: block; }
+
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(15, 17, 21, 0.92); backdrop-filter: blur(8px); border-top: 1px solid var(--card-border); padding: 14px 24px; z-index: 10; }
+  .footer-inner { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+  .progress-note { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .btn-main { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-main:hover { filter: brightness(1.1); }
+  .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
+  .modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 20; align-items: center; justify-content: center; padding: 24px; }
+  .modal-mask.show { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; width: 100%; max-width: 680px; padding: 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal textarea { width: 100%; min-height: 220px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-size: 13px; font-family: Consolas, monospace; line-height: 1.6; resize: vertical; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 14px; justify-content: flex-end; }
+  .btn-copy { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-close { background: transparent; color: var(--text-dim); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .copied-hint { color: var(--recommend); font-size: 13px; align-self: center; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>红果 TV App <span class="tag">票 10 · 第一期范围收敛(找剧 + 看剧)</span></h1>
+    <p>针对你的反馈重做:<b>砍功能</b>(第一期只解决找剧、看剧)、<b>重审操作逻辑</b>(只用 方向 / OK / 返回 三键,砍长按与 MENU)。
+       下方:砍留清单可逐项调整 → 收敛后的页面与播放器新逻辑 → 3 个分叉拍板。</p>
+  </header>
+
+  <!-- ============ 收敛总览 ============ -->
+  <div class="card">
+    <div class="sec-title">收敛总览 <span class="pill">v1 → 第一期 MVP</span></div>
+    <div class="sec-sub">原则:一个页面只解决一件事;所有操作只用 <b>方向键 + OK + 返回</b>(任何遥控器都有这三键)</div>
+    <div class="cmp">
+      <div class="cmp-box old">
+        <h4>round4 方案(全量 v1)</h4>
+        <ul>
+          <li>侧边栏 5 项:首页/搜索/<span class="cut">追剧</span>/<span class="cut">收藏</span>/<span class="cut">设置</span></li>
+          <li class="cut">追剧页 5 个筛选 tab + 追更提醒</li>
+          <li class="cut">收藏页 + 详情页收藏/追剧按钮</li>
+          <li class="cut">长按 OK 快捷菜单 / 3x 长按倍速</li>
+          <li class="cut">MENU 键(刷新/更多/设置面板)</li>
+          <li class="cut">系列聚合卡 / 相关系列 tab</li>
+          <li>返回键六级链、播放器 ←→ seek</li>
+        </ul>
+      </div>
+      <div class="cmp-box new">
+        <h4>第一期 MVP(找剧 + 看剧)</h4>
+        <ul>
+          <li><b>侧边栏 3 项:首页 / 搜索 / 历史</b></li>
+          <li>首页 3 行:继续观看 / 热播榜 / 推荐</li>
+          <li>搜索:联想词 + 键盘 + 结果网格</li>
+          <li>详情:资料 + 选集(一个播放主键)</li>
+          <li>播放器:竖屏 + <b>←→ 直接切集</b> + 自动连播 + 断点续播</li>
+          <li>历史:纯网格(继续观看的完整版)</li>
+          <li>返回链四级;清晰度固定 1080P 不给选项</li>
+        </ul>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>追剧 / 收藏 / 设置全部延后</b>到第二期——它们是"管理剧单",不是"找剧看剧";追更提醒还需要后台任务,成本最高</li>
+      <li>断点续播保留(看剧的核心体验):播放位置每 5 秒落盘,首页"继续观看"行直接续播,历史页 = 完整列表</li>
+      <li>砍 MENU 键的实际原因:大量国产盒子遥控器<b>没有 MENU 键</b>或键值不一,不可依赖</li>
+    </ul>
+  </div>
+
+  <!-- ============ 砍留清单 ============ -->
+  <div class="card">
+    <div class="sec-title">功能砍留清单 <span class="pill">点击任意行可切换 第一期做 / 延后</span></div>
+    <div class="sec-sub">默认按推荐设置(绿 = 第一期做,灰 = 延后);有异议直接点行切换</div>
+
+    <div class="scope-group keep">▍第一期做(默认)</div>
+    <div class="scope-row keep" data-name="首页三行" data-default="keep">
+      <div class="s-name">首页 · 三行结构</div>
+      <div class="s-desc">继续观看(断点续播)/ 热播榜 / 分类推荐——找题主入口;banner 运营位第一期不做</div>
+      <div class="scope-state">第一期做</div>
+    </div>
+    <div class="scope-row keep" data-name="搜索" data-default="keep">
+      <div class="s-name">搜索</div>
+      <div class="s-desc">输入框 + 联想词 + 全键盘 + 结果网格(接口已验证);系列聚合卡延后,结果按季直出</div>
+      <div class="scope-state">第一期做</div>
+    </div>
+    <div class="scope-row keep" data-name="详情+选集" data-default="keep">
+      <div class="s-name">详情 + 选集</div>
+      <div class="s-desc">左栏海报资料 + 一个"继续播放"主键;右栏选集 50 集/组 tab(界面沿用 round4,砍收藏/追剧按钮)</div>
+      <div class="scope-state">第一期做</div>
+    </div>
+    <div class="scope-row keep" data-name="播放器核心" data-default="keep">
+      <div class="s-name">播放器(核心)</div>
+      <div class="s-desc">竖屏居中播放 + 自动连播 + 断点续播 + OK 呼出控制条;操作逻辑重做见下方专节</div>
+      <div class="scope-state">第一期做</div>
+    </div>
+
+    <div class="scope-group defer">▍延后到第二期(默认)</div>
+    <div class="scope-row defer" data-name="历史页" data-default="defer">
+      <div class="s-name">历史页(独立页)</div>
+      <div class="s-desc">纯网格无筛选;是否第一期做 → 见 Q3(与侧边栏项数联动)</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="追剧页" data-default="defer">
+      <div class="s-name">追剧页</div>
+      <div class="s-desc">在看/有更新/想看/已看 4 筛选 + 追更提醒(需后台检查任务,是全部延后项里成本最高的)</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="收藏" data-default="defer">
+      <div class="s-name">收藏页 + 收藏按钮</div>
+      <div class="s-desc">纯本地快照网格;对单人使用的 TV,历史 + 榜单已覆盖回访路径</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="设置页" data-default="defer">
+      <div class="s-name">设置页</div>
+      <div class="s-desc">清晰度固定 1080P、缓存走默认策略,第一期无可设置项;留"关于/版本"入口即可(可藏在历史页底部)</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="长按OK菜单" data-default="defer">
+      <div class="s-name">长按 OK 快捷菜单 / 3x 倍速</div>
+      <div class="s-desc">隐藏手势学习成本高,且第一期没有收藏/追剧,卡片长按菜单无事可做;倍速一并延后</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="系列聚合" data-default="defer">
+      <div class="s-name">系列/多季聚合</div>
+      <div class="s-desc">搜索聚合卡、详情"相关系列" tab、播放器系列面板——标题正则启发式有误判风险,二期再上</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="榜单完整页" data-default="defer">
+      <div class="s-name">榜单完整页("更多›")</div>
+      <div class="s-desc">4 块榜单接口第一期只取"热播榜"做首页一行,完整榜单页二期</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-row defer" data-name="MENU键" data-default="defer">
+      <div class="s-name">MENU 键全部功能</div>
+      <div class="s-desc">刷新/更多/设置面板;很多盒子遥控器没有该键,砍掉后交互可用性不受影响</div>
+      <div class="scope-state">延后</div>
+    </div>
+    <div class="scope-note">注:以下 Q1 / Q2 的答案若与清单冲突(如选了"保留常驻面板"),以确认题答案为准。</div>
+  </div>
+
+  <!-- ============ 收敛后全局 + 首页 ============ -->
+  <div class="card">
+    <div class="sec-title">① 全局框架 + 首页 <span class="pill">侧边栏 5 → 3 项</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item focus"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>历史</span></div>
+        <div class="nav-item cut"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item cut"><div class="ico"></div><span>收藏</span></div>
+      </div>
+      <div class="content">
+        <div>
+          <div class="row-label"><span>继续观看</span><span class="more" style="color:#4a5060;">更多 ›(=历史页,若 Q3 选 a)</span></div>
+          <div class="prow">
+            <div class="poster focus"><div class="tagp">第12/95集</div><div class="prog"><i style="width:40%"></i></div></div>
+            <div class="poster"><div class="tagp">第3/80集</div><div class="prog"><i style="width:15%"></i></div></div>
+            <div class="poster"><div class="tagp">看到30集</div><div class="prog"><i style="width:70%"></i></div></div>
+            <div class="poster"></div><div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+        <div>
+          <div class="row-label"><span>🔥 热播榜</span></div>
+          <div class="prow">
+            <div class="poster"><div class="tagp">NO.1</div></div>
+            <div class="poster"><div class="tagp">NO.2</div></div>
+            <div class="poster"><div class="tagp">NO.3</div></div>
+            <div class="poster"></div><div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+        <div>
+          <div class="row-label"><span>为你推荐</span></div>
+          <div class="prow">
+            <div class="poster"><div class="tagp">完结</div></div>
+            <div class="poster"><div class="tagp">连载中</div></div>
+            <div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li>进页直接落<b>继续观看第一张卡</b>(无 banner、无运营位,开机即续播两键内:OK 进详情 → OK 播)</li>
+      <li>侧边栏进出规则保留:焦点在<b>行首</b>按 ← 进侧边栏(不再做"几何判定"复杂版——行首即判定,简单可预期)</li>
+      <li>"更多›"只有在 Q3 选 a(独立历史页)时出现;否则行尾无更多按钮</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>:首页(或搜索/历史)之间 ↑↓ 切换侧边栏项 → → 回内容区恢复原焦点;行内 ←→ 移动、↑↓ 跨行保持列位</div>
+  </div>
+
+  <!-- ============ 播放器操作逻辑重做 ============ -->
+  <div class="card">
+    <div class="sec-title">② 播放器操作逻辑重做 <span class="pill">本次最大修订</span></div>
+    <div class="sec-sub">核心判断:短剧一集 1~2 分钟,<b>换集远比 seek 高频</b>——←→ 应该直接切集,不该是快进</div>
+
+    <div class="stage-label"><b>态 1 · 纯净观看</b>(进播放器默认态,无任何 UI)</div>
+    <div class="player-stage">
+      <div class="p-video"></div>
+      <div class="p-osd">▶ 第12集 · 95集 · 1080P <span style="opacity:.6">(3s 后自动消失)</span></div>
+      <div class="p-hint">← 上一集 · → 下一集 · OK 控制条 · 返回 退出</div>
+    </div>
+
+    <div class="stage-label"><b>态 2 · 控制条</b>(按 OK 呼出;再按 OK 暂停/播放,5s 无操作自动收起)</div>
+    <div class="player-stage">
+      <div class="p-video"></div>
+      <div class="p-ctrl">
+        <div class="btn focus">⏸</div>
+        <div class="bar"><i></i></div>
+        <span class="time">08:12 / 20:30</span>
+        <div class="btn">选集</div>
+        <div class="btn">上一集</div>
+        <div class="btn">下一集</div>
+      </div>
+    </div>
+
+    <div class="stage-label"><b>态 3 · 选集浮层</b>(控制条上"选集"进入;50 集/组,已看灰显、当前橙框)</div>
+    <div class="player-stage">
+      <div class="p-overlay">
+        <div class="oh">选集 · 总裁是我前女友 <span>95 集 · 返回键关闭</span></div>
+        <div class="sel-grid">
+          <div class="sel-chip watched">1</div><div class="sel-chip watched">2</div><div class="sel-chip watched">3</div><div class="sel-chip watched">4</div><div class="sel-chip watched">5</div><div class="sel-chip watched">6</div><div class="sel-chip watched">7</div><div class="sel-chip watched">8</div>
+          <div class="sel-chip watched">9</div><div class="sel-chip watched">10</div><div class="sel-chip watched">11</div><div class="sel-chip now">12</div><div class="sel-chip focus">13</div><div class="sel-chip">14</div><div class="sel-chip">15</div><div class="sel-chip">16</div>
+          <div class="sel-chip">17</div><div class="sel-chip">18</div><div class="sel-chip">19</div><div class="sel-chip">20</div><div class="sel-chip">21</div><div class="sel-chip">22</div><div class="sel-chip">23</div><div class="sel-chip">24</div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="keypts">
+      <li><b>←→ = 上/下一集</b>(纯净态直接切,无 UI 依赖;集边界自动连播关/开由系统默认开)</li>
+      <li>seek(快进快退)只在<b>控制条内</b>做:呼出后 ←→ 移动进度,长按连续 seek(此处长按仅进度条,不涉及菜单)——精确拖动不是短剧刚需</li>
+      <li>选集浮层全屏铺开,8 列 × 多行,一次能看到 ~30 集;50 集/组 tab 沿用</li>
+      <li>断点续播每 5 秒落盘;退出播放 → 回详情页(不回首页,详情还可能有换剧需求)</li>
+    </ul>
+  </div>
+
+  <!-- ============ 键位总表 ============ -->
+  <div class="card">
+    <div class="sec-title">第一期遥控键位总表 <span class="pill">三键极简版</span></div>
+    <table>
+      <tr><th>按键</th><th>全局</th><th>网格/首页/历史</th><th>详情页</th><th>播放器</th></tr>
+      <tr><td>←→</td><td>焦点移动</td><td>行内移动;行首 ← 进侧边栏</td><td>左栏 ↔ 右栏(选集)</td><td><b>上一集 / 下一集</b>;控制条内 = seek</td></tr>
+      <tr><td>↑↓</td><td>焦点移动</td><td>跨行保持列位</td><td>栏内移动</td><td>呼出/收起控制条</td></tr>
+      <tr><td>OK</td><td>确认</td><td>进详情(继续观看行 = 直接续播)</td><td>播放 / 选集 chip 直接播</td><td>呼出控制条;控制条内 = 暂停/播放</td></tr>
+      <tr><td>返回</td><td colspan="4">四级链:关浮层/控制条 → 退播放回详情 → 回上级页面(焦点回内容区)→ 首页双击退出(1.5s 提示)</td></tr>
+      <tr><td>长按 / MENU</td><td colspan="4">第一期<b>不使用</b>(兼容性 + 学习成本;二期再评估)</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 确认题 ============ -->
+  <h2 style="font-size:18px; margin:32px 0 16px;">三个分叉,请拍板</h2>
+
+  <div class="qcard" data-q="1" data-name="播放器←→语义">
+    <div class="q-head"><span class="q-num">Q1</span><span class="q-title">播放器 ←→ 键:直接切集,还是保留快进快退?</span></div>
+    <div class="q-body">这是操作逻辑最大的修订点。短剧一集 1~2 分钟,换集是最高频操作;但若你有"跳过片头/拖进度"的习惯,seek 也有价值。</div>
+    <div class="option" data-value="←→ 直接切集(推荐)">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">←→ = 上一集 / 下一集 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">纯净态两键换集,匹配"连刷"节奏;seek 需求由控制条承担(呼出后 ←→ 拖进度)。切集瞬间 OSD 提示"第 N 集"</div>
+      </div>
+    </div>
+    <div class="option" data-value="←→ = seek ±10s(round4 原案)">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">←→ = seek ±10s(round4 原案)</div>
+        <div class="opt-desc">传统视频 App 习惯;换集走控制条"下一集"按钮或选集浮层,步数多 2~3 步</div>
+      </div>
+    </div>
+    <div class="option" data-value="混合:短按切集、长按 seek">
+      <div class="opt-key">c</div>
+      <div class="opt-body">
+        <div class="opt-label">混合:短按 ←→ 切集,长按 seek</div>
+        <div class="opt-desc">两者兼得,但引入长按语义(与"第一期零长按"原则冲突,且误触率高——按重了就跳 10s)</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="2" data-name="选集入口">
+    <div class="q-head"><span class="q-num">Q2</span><span class="q-title">换集入口:OK 呼出选集浮层,还是右侧常驻面板?</span></div>
+    <div class="q-body">round4 Q1 的"右侧常驻面板"方案被你标记为待商榷。第一期从简可改为:选集是<b>全屏浮层</b>(态 3),平时不可见。</div>
+    <div class="option" data-value="全屏选集浮层(按需呼出)">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">全屏选集浮层,按需呼出 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">观看时画面干净(竖屏视频两侧纯黑无干扰);若 Q1 选 a,高频换集已被 ←→ 覆盖,浮层只服务"跳看特定集"低频场景,一屏 30 集比侧栏 3 列效率更高</div>
+      </div>
+    </div>
+    <div class="option" data-value="右侧常驻面板(round4 原案)">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">右侧常驻选集面板(round4 原案)</div>
+        <div class="opt-desc">换集 →+OK 两步可见性强;但面板长期占右侧、半透明文字在运动画面上的可读性差,且与 Q1a 的 ←→ 切集功能重叠</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="3" data-name="历史页与侧边栏">
+    <div class="q-head"><span class="q-num">Q3</span><span class="q-title">历史:独立页面(侧边栏 3 项)还是并入首页(侧边栏 2 项)?</span></div>
+    <div class="q-body">砍掉追剧/收藏/设置后,"历史"是唯一剩余的本地数据页。它也可以不做独立页——首页"继续观看"行 + 行尾"更多"承担同样职能。</div>
+    <div class="option" data-value="独立历史页,侧边栏 3 项">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">独立历史页 · 侧边栏 3 项 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">纯网格一页(无筛选 tab,复用网格范式成本 ≈ 0);追剧/收藏二期加入时直接挂在历史页升维,侧边栏结构不用动</div>
+      </div>
+    </div>
+    <div class="option" data-value="并入首页,侧边栏 2 项">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">并入首页"更多›" · 侧边栏仅 首页/搜索</div>
+        <div class="opt-desc">极致精简;但"更多›"目标页还是要做一个网格页(成本相同),且侧边栏 2 项视觉单薄、二期加页时要改导航结构</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">补充意见</div>
+    <textarea id="extra-note" style="width:100%; min-height:70px; background:#12141a; color:var(--text); border:1px solid var(--card-border); border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical;" placeholder="对砍留清单、操作逻辑、页面设计的任何补充意见(可选)"></textarea>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="progress-note" id="progress-note">已作答 0 / 3</div>
+    <button class="btn-main" id="btn-generate" disabled>生成答案并复制</button>
+  </div>
+</footer>
+
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <h3>答案已生成 —— 复制下面的文本,粘贴回 Claude 会话</h3>
+    <textarea id="answer-text" readonly></textarea>
+    <div class="modal-actions">
+      <span class="copied-hint" id="copied-hint">✓ 已复制到剪贴板</span>
+      <button class="btn-close" id="btn-close">关闭</button>
+      <button class="btn-copy" id="btn-copy">复制</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ===== 砍留 toggle ===== */
+  document.querySelectorAll('.scope-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const toKeep = !row.classList.contains('keep');
+      row.classList.toggle('keep', toKeep);
+      row.classList.toggle('defer', !toKeep);
+      row.querySelector('.scope-state').textContent = toKeep ? '第一期做' : '延后';
+    });
+  });
+
+  /* ===== 确认题 ===== */
+  const cards = Array.from(document.querySelectorAll('.qcard'));
+  const btnGenerate = document.getElementById('btn-generate');
+  const progressNote = document.getElementById('progress-note');
+
+  function updateProgress() {
+    const answered = cards.filter(c => c.dataset.answer && c.dataset.answer.trim()).length;
+    progressNote.textContent = `已作答 ${answered} / ${cards.length}`;
+    btnGenerate.disabled = answered < cards.length;
+  }
+
+  function updateStatus(card) {
+    const st = card.querySelector('.status');
+    const otherSel = card.querySelector('.option.other.selected');
+    if (otherSel && !(card.dataset.answer && card.dataset.answer.trim())) {
+      st.textContent = '✎ 已选"其他",请填写内容后再生成';
+      st.style.color = 'var(--accent)';
+    } else {
+      st.textContent = '✓ 已作答';
+      st.style.color = 'var(--recommend)';
+    }
+  }
+
+  cards.forEach(card => {
+    const options = card.querySelectorAll('.option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        options.forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        card.classList.add('done');
+        if (opt.classList.contains('other')) {
+          const ta = opt.querySelector('textarea');
+          card.dataset.answer = ta.value.trim() ? '其他:' + ta.value.trim() : '';
+          ta.focus();
+        } else {
+          card.dataset.answer = opt.dataset.value;
+        }
+        updateStatus(card);
+        updateProgress();
+      });
+    });
+    const otherTa = card.querySelector('.option.other textarea');
+    if (otherTa) {
+      otherTa.addEventListener('input', () => {
+        if (card.querySelector('.option.other').classList.contains('selected')) {
+          card.dataset.answer = otherTa.value.trim() ? '其他:' + otherTa.value.trim() : '';
+          updateStatus(card);
+          updateProgress();
+        }
+      });
+    }
+  });
+
+  /* ===== 生成答案 ===== */
+  function buildAnswer() {
+    let out = '## 票 10 · 第一期范围收敛拍板(round5)\n\n### 功能砍留\n';
+    document.querySelectorAll('.scope-row').forEach(row => {
+      const state = row.classList.contains('keep') ? '第一期做' : '延后';
+      out += `- ${row.dataset.name}:${state}${row.dataset.default !== (row.classList.contains('keep') ? 'keep' : 'defer') ? '(手动调整,默认相反)' : ''}\n`;
+    });
+    out += '\n';
+    cards.forEach(card => {
+      out += `Q${card.dataset.q}(${card.dataset.name}):${card.dataset.answer}\n`;
+    });
+    const extra = document.getElementById('extra-note').value.trim();
+    if (extra) out += `\n补充意见:${extra}\n`;
+    out += '\n(页面设计若无异议视为通过;有意见见补充)';
+    return out;
+  }
+
+  btnGenerate.addEventListener('click', () => {
+    document.getElementById('answer-text').value = buildAnswer();
+    document.getElementById('modal-mask').classList.add('show');
+    copyAnswer();
+  });
+
+  function copyAnswer() {
+    const ta = document.getElementById('answer-text');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+      document.getElementById('copied-hint').style.display = 'inline';
+      setTimeout(() => document.getElementById('copied-hint').style.display = 'none', 2000);
+    }).catch(() => { document.execCommand('copy'); });
+  }
+
+  document.getElementById('btn-copy').addEventListener('click', copyAnswer);
+  document.getElementById('btn-close').addEventListener('click', () => document.getElementById('modal-mask').classList.remove('show'));
+  document.getElementById('modal-mask').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+</script>
+</body>
+</html>

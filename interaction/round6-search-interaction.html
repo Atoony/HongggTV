@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红果 TV App · 票 11 搜索交互设计</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #1a1d24; --card-border: #2a2e38;
+    --text: #e8eaed; --text-dim: #9aa0ab;
+    --accent: #ff7043; --accent-soft: rgba(255, 112, 67, 0.12);
+    --recommend: #4caf8d; --recommend-soft: rgba(76, 175, 141, 0.12);
+    --poster: #262b36; --poster2: #2e3442;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding-bottom: 120px; }
+  .container { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header h1 .tag { font-size: 12px; font-weight: 500; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 2px 8px; vertical-align: 3px; margin-left: 10px; }
+  header p { color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+  header p b { color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .sec-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sec-title .pill { font-size: 11px; color: var(--text-dim); background: #12141a; border: 1px solid var(--card-border); border-radius: 4px; padding: 1px 8px; font-weight: 500; }
+  .sec-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 14px; }
+  .sec-sub b { color: var(--recommend); }
+
+  /* ===== 搜索页 mockup ===== */
+  .tv { background: #000; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .sidebar { width: 88px; float: left; display: flex; flex-direction: column; gap: 8px; margin-right: 12px; }
+  .nav-item { height: 34px; border-radius: 6px; background: #191d26; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+  .nav-item .ico { width: 14px; height: 14px; border-radius: 3px; background: #3a4152; flex-shrink: 0; }
+  .nav-item span { font-size: 10px; color: #6b7280; }
+  .nav-item.focus { background: var(--accent-soft); outline: 2px solid var(--accent); }
+  .nav-item.focus .ico { background: var(--accent); }
+  .nav-item.focus span { color: var(--text); }
+  .tv::after { content: ""; display: block; clear: both; }
+  .search-area { overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
+  .searchbox { height: 36px; border-radius: 6px; border: 1px solid #3a4152; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+  .searchbox .cursor { width: 1px; height: 15px; background: var(--accent); }
+  .searchbox span { font-size: 12px; color: var(--text); }
+  .searchbox .ph { color: #6b7280; }
+  .zone-label { font-size: 10px; color: #6b7280; margin-bottom: -4px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 11px; color: #9aa0ab; background: #191d26; border-radius: 4px; padding: 3px 12px; }
+  .chip.focus { outline: 2px solid var(--accent); color: var(--text); }
+  .chip.dim { color: #4a5060; background: #14171e; }
+  .keyboard { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+  .kb-key { height: 28px; border-radius: 4px; background: #191d26; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #8a93a6; }
+  .kb-key.fn { color: #6b7280; background: #14171e; }
+  .kb-key.focus { background: var(--accent); color: #fff; outline: 2px solid #fff; }
+
+  /* 三形态对比 */
+  .cmp3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .cmp3 .col { background: #000; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .cmp3 .col h5 { font-size: 11px; color: var(--text-dim); font-weight: 600; }
+  .cmp3 .mini-box { height: 22px; border-radius: 4px; border: 1px solid #3a4152; font-size: 9px; color: #9aa0ab; display: flex; align-items: center; padding: 0 8px; }
+  .cmp3 .mini-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .cmp3 .mini-chip { font-size: 9px; color: #9aa0ab; background: #191d26; border-radius: 3px; padding: 2px 7px; }
+  .cmp3 .mini-chip.hot { color: var(--accent); border: 1px solid var(--accent); }
+  .cmp3 .mini-kb { display: grid; gap: 3px; }
+  .cmp3 .mk { height: 16px; border-radius: 3px; background: #191d26; font-size: 8px; color: #8a93a6; display: flex; align-items: center; justify-content: center; }
+  .cmp3 .mk.focus { background: var(--accent); color: #fff; }
+
+  /* 结果页 */
+  .prow { display: flex; gap: 8px; margin-bottom: 8px; }
+  .poster { aspect-ratio: 9/16; height: 96px; border-radius: 5px; background: var(--poster); position: relative; flex-shrink: 0; }
+  .poster .tagp { position: absolute; bottom: 4px; left: 4px; font-size: 8px; background: rgba(0,0,0,0.7); color: #9aa0ab; border-radius: 2px; padding: 0 3px; }
+  .poster .tagp.season { color: #ffd479; }
+  .poster.focus { outline: 2px solid var(--accent); outline-offset: 1px; transform: scale(1.06); background: var(--poster2); z-index: 2; }
+  .result-head { font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+  .result-head b { color: var(--accent); }
+  .empty-state { border: 1px dashed #3a4152; border-radius: 8px; padding: 18px; text-align: center; font-size: 11px; color: #6b7280; margin-top: 10px; }
+
+  .keypts { font-size: 13.5px; color: var(--text-dim); }
+  .keypts li { margin: 4px 0 0 20px; }
+  .keypts b { color: var(--text); }
+  .focusflow { margin-top: 12px; background: #12141a; border: 1px solid var(--card-border); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-dim); }
+  .focusflow b { color: var(--accent); font-weight: 600; }
+
+  /* ===== 确认题 ===== */
+  .qcard { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .qcard.done { border-color: var(--recommend); }
+  .q-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .q-num { color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .q-title { font-size: 17px; font-weight: 600; }
+  .q-body { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; }
+  .option { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  .option:hover { border-color: #4a5060; }
+  .option.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .opt-key { font-weight: 700; color: var(--text-dim); flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--card-border); font-size: 13px; margin-top: 2px; }
+  .option.selected .opt-key { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt-body { flex: 1; }
+  .opt-label { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge-rec { font-size: 11px; font-weight: 600; color: var(--recommend); background: var(--recommend-soft); padding: 1px 8px; border-radius: 4px; }
+  .opt-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+  .option textarea { width: 100%; margin-top: 8px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 44px; }
+  .option textarea:focus { border-color: var(--accent); outline: none; }
+  .status { font-size: 12px; margin-top: 10px; color: var(--recommend); display: none; }
+  .qcard.done .status { display: block; }
+
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(15, 17, 21, 0.92); backdrop-filter: blur(8px); border-top: 1px solid var(--card-border); padding: 14px 24px; z-index: 10; }
+  .footer-inner { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+  .progress-note { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .btn-main { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-main:hover { filter: brightness(1.1); }
+  .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
+  .modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 20; align-items: center; justify-content: center; padding: 24px; }
+  .modal-mask.show { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; width: 100%; max-width: 680px; padding: 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal textarea { width: 100%; min-height: 220px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-size: 13px; font-family: Consolas, monospace; line-height: 1.6; resize: vertical; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 14px; justify-content: flex-end; }
+  .btn-copy { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-close { background: transparent; color: var(--text-dim); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .copied-hint { color: var(--recommend); font-size: 13px; align-self: center; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>红果 TV App <span class="tag">票 11 · 搜索交互设计</span></h1>
+    <p>基于票 07 数据事实(suggestion 联想接口 ≤10 条/300ms、双通道搜索、标题正则识季)与票 10 第一期框架。
+       系列聚合已拍板延后(票 10),<b>搜索结果按季直出</b>。底部 <b>3 个分叉</b>待拍板。<br>
+       <span style="color:var(--recommend);">✓ 已按你的澄清更新:键盘为 <b>ABC 字母序</b>(非 QWERTY),页面全部 mockup 已同步。</span></p>
+  </header>
+
+  <!-- ============ 搜索页主布局 ============ -->
+  <div class="card">
+    <div class="sec-title">① 搜索页主布局 <span class="pill">已拍板形态:ABC 字母序键盘 + 双候选区</span></div>
+    <div class="sec-sub">三层焦点区从上到下:<b>联想词行(接口实时)→ 拼音候选字(本地)→ QWERTY 键盘</b>;输入框只显示不占焦点</div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item focus"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>历史</span></div>
+      </div>
+      <div class="search-area">
+        <div class="searchbox"><span class="ph">搜索剧名 / 演员 / 分类…</span></div>
+        <div>
+          <div class="zone-label">联想词(输入停顿 300ms 实时更新 · 来自红果 suggestion 接口)</div>
+          <div class="chips" style="margin-top:5px;">
+            <div class="chip">龙王殿</div><div class="chip">龙王殿 第二季</div><div class="chip">龙王传说</div>
+            <div class="chip">龙抬头</div><div class="chip dim">…</div>
+          </div>
+        </div>
+        <div>
+          <div class="zone-label">拼音候选(输全拼时逐字上屏)</div>
+          <div class="chips" style="margin-top:5px;">
+            <div class="chip">龙</div><div class="chip">楼</div><div class="chip">洛</div><div class="chip">罗</div>
+            <div class="chip">骆</div><div class="chip">落</div><div class="chip dim">…</div>
+          </div>
+        </div>
+        <div class="keyboard">
+          <div class="kb-key">1</div><div class="kb-key">2</div><div class="kb-key">3</div><div class="kb-key">4</div><div class="kb-key">5</div><div class="kb-key">6</div><div class="kb-key">7</div><div class="kb-key">8</div><div class="kb-key">9</div><div class="kb-key">0</div>
+          <div class="kb-key focus">A</div><div class="kb-key">B</div><div class="kb-key">C</div><div class="kb-key">D</div><div class="kb-key">E</div><div class="kb-key">F</div><div class="kb-key">G</div><div class="kb-key">H</div><div class="kb-key">I</div><div class="kb-key">J</div>
+          <div class="kb-key">K</div><div class="kb-key">L</div><div class="kb-key">M</div><div class="kb-key">N</div><div class="kb-key">O</div><div class="kb-key">P</div><div class="kb-key">Q</div><div class="kb-key">R</div><div class="kb-key">S</div><div class="kb-key">T</div>
+          <div class="kb-key">U</div><div class="kb-key">V</div><div class="kb-key">W</div><div class="kb-key">X</div><div class="kb-key">Y</div><div class="kb-key">Z</div><div class="kb-key fn">拼/EN</div><div class="kb-key fn">⌫</div><div class="kb-key fn">空格</div><div class="kb-key fn">搜索</div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>联想词是效率核心</b>:红果 suggestion 对短前缀即出完整剧名联想(word_type 含 剧名/分类/演员名)——"lz"两个键就够选中《龙王殿》</li>
+      <li>拼音候选行覆盖<b>精确输入兜底</b>:冷门剧联想不中时,全拼打字逐字上屏,不依赖网络</li>
+      <li>字母按 <b>ABC 序</b>排列(非 QWERTY):遥控用户按序找键直观,无需记电脑键盘布局;数字行保留(剧名常带数字如"龙王殿3");功能键:拼/EN 切换、⌫、空格、搜索</li>
+    </ul>
+  </div>
+
+  <!-- ============ 打字中快照 ============ -->
+  <div class="card">
+    <div class="sec-title">② 打字中快照 <span class="pill">输入 "lz" 后的状态</span></div>
+    <div class="tv">
+      <div class="search-area">
+        <div class="searchbox"><span>lz</span><div class="cursor"></div><span style="color:#6b7280; margin-left:auto; font-size:10px;">拼音长  lóng →</span></div>
+        <div>
+          <div class="zone-label">联想词(300ms 停顿后刷新)</div>
+          <div class="chips" style="margin-top:5px;">
+            <div class="chip focus">龙王殿</div><div class="chip">龙王殿 第二季</div><div class="chip">龙王殿 第三季</div>
+            <div class="chip">龙王殿之都市传说</div><div class="chip">龙抬头</div>
+          </div>
+        </div>
+        <div>
+          <div class="zone-label">拼音候选</div>
+          <div class="chips" style="margin-top:5px;">
+            <div class="chip">龙</div><div class="chip">楼</div><div class="chip">洛</div><div class="chip dim">…</div>
+          </div>
+        </div>
+        <div class="keyboard">
+          <div class="kb-key">1</div><div class="kb-key">2</div><div class="kb-key">3</div><div class="kb-key">4</div><div class="kb-key">5</div><div class="kb-key">6</div><div class="kb-key">7</div><div class="kb-key">8</div><div class="kb-key">9</div><div class="kb-key">0</div>
+          <div class="kb-key">Q</div><div class="kb-key">W</div><div class="kb-key">E</div><div class="kb-key">R</div><div class="kb-key">T</div><div class="kb-key">Y</div><div class="kb-key">U</div><div class="kb-key">I</div><div class="kb-key">O</div><div class="kb-key">P</div>
+          <div class="kb-key">A</div><div class="kb-key">S</div><div class="kb-key">D</div><div class="kb-key">F</div><div class="kb-key">G</div><div class="kb-key">H</div><div class="kb-key">J</div><div class="kb-key">K</div><div class="kb-key">L</div><div class="kb-key fn">⌫</div>
+          <div class="kb-key fn">拼/EN</div><div class="kb-key">Z</div><div class="kb-key">X</div><div class="kb-key">C</div><div class="kb-key">V</div><div class="kb-key">B</div><div class="kb-key">N</div><div class="kb-key">M</div><div class="kb-key fn">空格</div><div class="kb-key fn">搜索</div>
+        </div>
+      </div>
+    </div>
+    <div class="focusflow"><b>最短路径</b>:键盘按 L、Z(2 键)→ ↓ 一步到联想词行(首项即焦点)→ OK 直接搜索《龙王殿》——<b>4 次按键完成一次搜索</b>;联想不中则再 ↑ 到拼音候选逐字上屏,或继续打全拼</div>
+  </div>
+
+  <!-- ============ 三形态对比 ============ -->
+  <div class="card">
+    <div class="sec-title">③ 键盘形态三选一 <span class="pill">Q1 分叉预览</span></div>
+    <div class="cmp3">
+      <div class="col">
+        <h5>a · ABC 字母序 + 双候选区(已拍板)</h5>
+        <div class="mini-box">输入框</div>
+        <div class="mini-chips"><div class="mini-chip hot">龙王殿</div><div class="mini-chip">龙抬头</div></div>
+        <div class="mini-chips"><div class="mini-chip">龙</div><div class="mini-chip">楼</div><div class="mini-chip">洛</div></div>
+        <div class="mini-kb" style="grid-template-columns:repeat(10,1fr);">
+          <div class="mk focus">A</div><div class="mk">B</div><div class="mk">C</div><div class="mk">D</div><div class="mk">E</div><div class="mk">F</div><div class="mk">G</div><div class="mk">H</div><div class="mk">I</div><div class="mk">J</div>
+          <div class="mk">K</div><div class="mk">L</div><div class="mk">M</div><div class="mk">N</div><div class="mk">O</div><div class="mk">P</div><div class="mk">Q</div><div class="mk">R</div><div class="mk">S</div><div class="mk">T</div>
+          <div class="mk">U</div><div class="mk">V</div><div class="mk">W</div><div class="mk">X</div><div class="mk">Y</div><div class="mk">Z</div><div class="mk">拼</div><div class="mk">⌫</div><div class="mk">空</div><div class="mk">搜</div>
+        </div>
+      </div>
+      <div class="col">
+        <h5>b · 联想优先(简拼主打)</h5>
+        <div class="mini-box">输入框</div>
+        <div class="mini-chips" style="min-height:46px; align-content:flex-start;"><div class="mini-chip hot">龙王殿</div><div class="mini-chip">龙王殿 第二季</div><div class="mini-chip">龙王传说</div><div class="mini-chip">龙抬头</div><div class="mini-chip">洛九针</div><div class="mini-chip">…</div></div>
+        <div class="mini-kb" style="grid-template-columns:repeat(7,1fr);">
+          <div class="mk">A</div><div class="mk">B</div><div class="mk">C</div><div class="mk">D</div><div class="mk">E</div><div class="mk">F</div><div class="mk">G</div>
+          <div class="mk">H</div><div class="mk focus">I</div><div class="mk">J</div><div class="mk">K</div><div class="mk">L</div><div class="mk">M</div><div class="mk">N</div>
+          <div class="mk">O</div><div class="mk">P</div><div class="mk">Q</div><div class="mk">R</div><div class="mk">S</div><div class="mk">T</div><div class="mk">U</div>
+          <div class="mk">V</div><div class="mk">W</div><div class="mk">X</div><div class="mk">Y</div><div class="mk">Z</div><div class="mk">⌫</div><div class="mk">搜</div>
+        </div>
+      </div>
+      <div class="col">
+        <h5>c · T9 九宫拼音</h5>
+        <div class="mini-box">输入框</div>
+        <div class="mini-chips"><div class="mini-chip hot">龙</div><div class="mini-chip">楼</div><div class="mini-chip">洛</div></div>
+        <div class="mini-kb" style="grid-template-columns:repeat(3,1fr);">
+          <div class="mk">1 ,.?</div><div class="mk">2 abc</div><div class="mk">3 def</div>
+          <div class="mk">4 ghi</div><div class="mk focus">5 jkl</div><div class="mk">6 mno</div>
+          <div class="mk">7 pqrs</div><div class="mk">8 tuv</div><div class="mk">9 wxyz</div>
+          <div class="mk">符号</div><div class="mk">0 空格</div><div class="mk">⌫</div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>a</b>:任意中文可输入(全拼兜底)+ 联想短路径,能力最全;字母 ABC 序按序可查,遥控用户无需 QWERTY 肌肉记忆;键盘 4 行 × 10 列,单键移动平均 2~3 步</li>
+      <li><b>b</b>:联想区放大、键盘 26 键精简,主打"2~4 键出结果";冷门剧联想不中时仍需切换全拼模式(两套键盘)</li>
+      <li><b>c</b>:9 键移动距离最短,老手机用户零学习;但重码多、候选翻页烦,精确输入最慢</li>
+    </ul>
+  </div>
+
+  <!-- ============ 结果页 ============ -->
+  <div class="card">
+    <div class="sec-title">④ 结果页 <span class="pill">按季直出 · 聚合已延后(票 10)</span></div>
+    <div class="result-head">搜索 <b>"龙王殿"</b> · 共 8 个结果 · 同系列按季号升序相邻排列</div>
+    <div class="prow">
+      <div class="poster focus"><div class="tagp season">第1季 · 80集</div></div>
+      <div class="poster"><div class="tagp season">第2季 · 95集</div></div>
+      <div class="poster"><div class="tagp season">第3季 · 62集</div></div>
+      <div class="poster"><div class="tagp">番外 · 12集</div></div>
+      <div class="poster"></div><div class="poster"></div>
+    </div>
+    <div class="prow">
+      <div class="poster"><div class="tagp">同类 · 完结</div></div>
+      <div class="poster"><div class="tagp">同类 · 连载</div></div>
+      <div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+    </div>
+    <ul class="keypts">
+      <li>双通道搜索(Web 搜索页 + 名称索引)合并去重;<b>缺季补全</b>机制沿用 Go 层(拉齐同系列 + 季号排序,不是 UI 聚合,不违反票 10 拍板)</li>
+      <li>角标:季号(金色)/ 集数·状态(灰);卡片不带评分(nativeDrama 无 score 字段,票 07 风险点)</li>
+      <li>OK 进详情;返回键回键盘区并<b>保留输入内容与结果</b>(show/hide 复用,票 10 机制)</li>
+    </ul>
+    <div class="empty-state">空结果态:居中提示"没有找到相关短剧" + 建议"试试只输剧名前两个字 / 检查错别字" + 焦点自动回键盘(blbl 空态短板,自建)</div>
+    <div class="focusflow"><b>焦点流转</b>:键盘"搜索"键 OK → 结果网格首项(或联想词 OK → 直接以该词搜索)→ 网格 ←→↑↓ 标准移动、翻页游标推进 → 返回键回键盘(内容保留)</div>
+  </div>
+
+  <!-- ============ 确认题 ============ -->
+  <h2 style="font-size:18px; margin:32px 0 16px;">三个分叉,请拍板</h2>
+
+  <div class="qcard" data-q="1" data-name="键盘形态">
+    <div class="q-head"><span class="q-num">Q1</span><span class="q-title">键盘形态:选哪种?</span></div>
+    <div class="q-body">见上方③的三列预览。核心权衡:输入能力完备性 vs 按键效率。</div>
+    <div class="option" data-value="ABC 字母序键盘 + 数字行 + 双候选区(已拍板)">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">ABC 字母序键盘 + 数字行 + 双候选区 <span class="badge-rec">已拍板</span></div>
+        <div class="opt-desc">26 键按字母序排列(非 QWERTY)+ 数字行;联想短路径 + 全拼兜底,任意中文可输入;一套键盘无模式切换</div>
+      </div>
+    </div>
+    <div class="option" data-value="联想优先(简拼键盘 + 大联想区)">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">联想优先(26 键精简 + 联想区放大)</div>
+        <div class="opt-desc">高频路径按键更少;但冷门剧要切全拼模式(两套键盘),实现与学习成本翻倍</div>
+      </div>
+    </div>
+    <div class="option" data-value="T9 九宫拼音">
+      <div class="opt-key">c</div>
+      <div class="opt-body">
+        <div class="opt-label">T9 九宫拼音</div>
+        <div class="opt-desc">移动距离最短、老手机用户零学习;重码翻页多,精确输入最慢,TV 上少见此形态</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="2" data-name="进页焦点与流转">
+    <div class="q-head"><span class="q-num">Q2</span><span class="q-title">进页落点与 ↓ 优先级?</span></div>
+    <div class="q-body">进搜索页时焦点落哪、打字后 ↓ 先到哪个区,决定高频路径的长短。</div>
+    <div class="option" data-value="进页落键盘;打字后 ↓ 直达联想词行">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">落键盘,↓ 直达联想词 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">进页即可打字(0 思考);联想词是高频出口,↓ 一步直达;拼音候选次之(再 ↑ 一层);4 键完成一次典型搜索</div>
+      </div>
+    </div>
+    <div class="option" data-value="有搜索历史时先落历史区">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">有历史先落历史区,无历史落键盘</div>
+        <div class="opt-desc">适合反复搜同几部剧的用户;但"想搜新内容"时要多按一次 ↓ 绕过历史区</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="3" data-name="搜索历史行">
+    <div class="q-head"><span class="q-num">Q3</span><span class="q-title">搜索历史:第一期做吗?</span></div>
+    <div class="q-body">输入框为空时,联想区位置显示本地搜索历史(最近 10 条,可清除)——纯本地实现,成本低。</div>
+    <div class="option" data-value="第一期做(本地最近 10 条)">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">第一期做 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">TV 打字成本高,历史行让"再搜上次那部"变一键;纯本地 SharedPreferences,无接口依赖</div>
+      </div>
+    </div>
+    <div class="option" data-value="延后二期">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">延后二期</div>
+        <div class="opt-desc">进页直接是干净键盘;牺牲重复搜索效率</div>
+      </div>
+    </div>
+    <div class="option other">
+      <div class="opt-key">✎</div>
+      <div class="opt-body">
+        <div class="opt-label">其他(自定义答案)</div>
+        <textarea placeholder="选中后在此输入你的方案/想法"></textarea>
+      </div>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title">补充意见</div>
+    <textarea id="extra-note" style="width:100%; min-height:70px; background:#12141a; color:var(--text); border:1px solid var(--card-border); border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; resize:vertical;" placeholder="对搜索布局、结果页、键盘形态的任何补充意见(可选)"></textarea>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="progress-note" id="progress-note">已作答 0 / 3</div>
+    <button class="btn-main" id="btn-generate" disabled>生成答案并复制</button>
+  </div>
+</footer>
+
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <h3>答案已生成 —— 复制下面的文本,粘贴回 Claude 会话</h3>
+    <textarea id="answer-text" readonly></textarea>
+    <div class="modal-actions">
+      <span class="copied-hint" id="copied-hint">✓ 已复制到剪贴板</span>
+      <button class="btn-close" id="btn-close">关闭</button>
+      <button class="btn-copy" id="btn-copy">复制</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cards = Array.from(document.querySelectorAll('.qcard'));
+  const btnGenerate = document.getElementById('btn-generate');
+  const progressNote = document.getElementById('progress-note');
+
+  function updateProgress() {
+    const answered = cards.filter(c => c.dataset.answer && c.dataset.answer.trim()).length;
+    progressNote.textContent = `已作答 ${answered} / ${cards.length}`;
+    btnGenerate.disabled = answered < cards.length;
+  }
+
+  function updateStatus(card) {
+    const st = card.querySelector('.status');
+    const otherSel = card.querySelector('.option.other.selected');
+    if (otherSel && !(card.dataset.answer && card.dataset.answer.trim())) {
+      st.textContent = '✎ 已选"其他",请填写内容后再生成';
+      st.style.color = 'var(--accent)';
+    } else {
+      st.textContent = '✓ 已作答';
+      st.style.color = 'var(--recommend)';
+    }
+  }
+
+  cards.forEach(card => {
+    const options = card.querySelectorAll('.option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        options.forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        card.classList.add('done');
+        if (opt.classList.contains('other')) {
+          const ta = opt.querySelector('textarea');
+          card.dataset.answer = ta.value.trim() ? '其他:' + ta.value.trim() : '';
+          ta.focus();
+        } else {
+          card.dataset.answer = opt.dataset.value;
+        }
+        updateStatus(card);
+        updateProgress();
+      });
+    });
+    const otherTa = card.querySelector('.option.other textarea');
+    if (otherTa) {
+      otherTa.addEventListener('input', () => {
+        if (card.querySelector('.option.other').classList.contains('selected')) {
+          card.dataset.answer = otherTa.value.trim() ? '其他:' + otherTa.value.trim() : '';
+          updateStatus(card);
+          updateProgress();
+        }
+      });
+    }
+  });
+
+  function buildAnswer() {
+    let out = '## 票 11 搜索交互拍板(round6)\n\n';
+    cards.forEach(card => {
+      out += `Q${card.dataset.q}(${card.dataset.name}):${card.dataset.answer}\n`;
+    });
+    const extra = document.getElementById('extra-note').value.trim();
+    if (extra) out += `\n补充意见:${extra}\n`;
+    out += '\n(页面设计若无异议视为通过;有意见见补充)';
+    return out;
+  }
+
+  btnGenerate.addEventListener('click', () => {
+    document.getElementById('answer-text').value = buildAnswer();
+    document.getElementById('modal-mask').classList.add('show');
+    copyAnswer();
+  });
+
+  function copyAnswer() {
+    const ta = document.getElementById('answer-text');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+      document.getElementById('copied-hint').style.display = 'inline';
+      setTimeout(() => document.getElementById('copied-hint').style.display = 'none', 2000);
+    }).catch(() => { document.execCommand('copy'); });
+  }
+
+  document.getElementById('btn-copy').addEventListener('click', copyAnswer);
+  document.getElementById('btn-close').addEventListener('click', () => document.getElementById('modal-mask').classList.remove('show'));
+  document.getElementById('modal-mask').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+</script>
+</body>
+</html>

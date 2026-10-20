@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红果 TV App · 票 10 信息架构设计</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #1a1d24; --card-border: #2a2e38;
+    --text: #e8eaed; --text-dim: #9aa0ab;
+    --accent: #ff7043; --accent-soft: rgba(255, 112, 67, 0.12);
+    --recommend: #4caf8d; --recommend-soft: rgba(76, 175, 141, 0.12);
+    --poster: #262b36; --poster2: #2e3442;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; padding-bottom: 120px; }
+  .container { max-width: 920px; margin: 0 auto; padding: 32px 24px; }
+  header { margin-bottom: 28px; }
+  header h1 { font-size: 22px; font-weight: 600; }
+  header h1 .tag { font-size: 12px; font-weight: 500; color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 2px 8px; vertical-align: 3px; margin-left: 10px; }
+  header p { color: var(--text-dim); font-size: 14px; margin-top: 8px; }
+  header p b { color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .sec-title { font-size: 17px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 10px; }
+  .sec-title .pill { font-size: 11px; color: var(--text-dim); background: #12141a; border: 1px solid var(--card-border); border-radius: 4px; padding: 1px 8px; font-weight: 500; }
+  .sec-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 14px; }
+  .sec-sub b { color: var(--recommend); }
+
+  /* ===== TV mockup 通用 ===== */
+  .tv { background: #000; border-radius: 10px; padding: 12px; display: flex; gap: 10px; margin-bottom: 14px; }
+  .tv.fullscreen { display: block; position: relative; }
+  .sidebar { width: 88px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+  .nav-item { height: 34px; border-radius: 6px; background: #191d26; display: flex; align-items: center; gap: 8px; padding: 0 10px; }
+  .nav-item .ico { width: 14px; height: 14px; border-radius: 3px; background: #3a4152; flex-shrink: 0; }
+  .nav-item span { font-size: 10px; color: #6b7280; }
+  .nav-item.focus { background: var(--accent-soft); outline: 2px solid var(--accent); }
+  .nav-item.focus .ico { background: var(--accent); }
+  .nav-item.focus span { color: var(--text); }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .row-label { font-size: 10px; color: #6b7280; display: flex; justify-content: space-between; }
+  .row-label .more { color: #4a5060; }
+  .prow { display: flex; gap: 8px; }
+  .poster { aspect-ratio: 9/16; height: 86px; border-radius: 5px; background: var(--poster); position: relative; flex-shrink: 0; }
+  .poster .tagp { position: absolute; bottom: 4px; left: 4px; font-size: 8px; background: rgba(0,0,0,0.7); color: #9aa0ab; border-radius: 2px; padding: 0 3px; }
+  .poster .prog { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.15); }
+  .poster .prog i { display: block; height: 100%; background: var(--accent); }
+  .poster.focus { outline: 2px solid var(--accent); outline-offset: 1px; transform: scale(1.06); background: var(--poster2); z-index: 2; }
+  .banner { height: 92px; border-radius: 6px; background: linear-gradient(110deg, #232838 0%, #3a4157 60%, #4a4160 100%); position: relative; }
+  .banner .btitle { position: absolute; left: 14px; bottom: 10px; font-size: 12px; font-weight: 600; color: #cdd3e0; }
+  .banner .bsub { position: absolute; left: 14px; bottom: -1px; font-size: 9px; color: #7a8ba8; }
+
+  .keypts { font-size: 13.5px; color: var(--text-dim); }
+  .keypts li { margin: 4px 0 0 20px; }
+  .keypts b { color: var(--text); }
+  .focusflow { margin-top: 12px; background: #12141a; border: 1px solid var(--card-border); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text-dim); }
+  .focusflow b { color: var(--accent); font-weight: 600; }
+
+  /* 键位表 */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--card-border); vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 600; white-space: nowrap; }
+  td:first-child { white-space: nowrap; font-weight: 600; color: var(--accent); }
+
+  /* 搜索页 */
+  .searchbox { height: 34px; border-radius: 6px; border: 1px solid #3a4152; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+  .searchbox.focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .searchbox .cursor { width: 1px; height: 14px; background: var(--accent); }
+  .searchbox span { font-size: 11px; color: #9aa0ab; }
+  .sugg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sugg .s { font-size: 10px; color: #9aa0ab; background: #191d26; border-radius: 4px; padding: 3px 10px; }
+  .sugg .s.focus { outline: 2px solid var(--accent); color: var(--text); }
+  .keyboard { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .kb-key { height: 24px; border-radius: 4px; background: #191d26; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #6b7280; }
+  .kb-key.focus { background: var(--accent); color: #fff; outline: 2px solid #fff; }
+
+  /* 详情页 */
+  .detail { display: flex; gap: 14px; }
+  .d-left { width: 200px; flex-shrink: 0; display: flex; flex-direction: column; gap: 8px; }
+  .d-poster { aspect-ratio: 9/16; border-radius: 6px; background: var(--poster); height: 180px; }
+  .d-info { font-size: 9.5px; color: #6b7280; line-height: 1.8; }
+  .d-btns { display: flex; gap: 6px; }
+  .d-btn { flex: 1; height: 28px; border-radius: 6px; background: #191d26; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #9aa0ab; }
+  .d-btn.primary { background: var(--accent); color: #fff; }
+  .d-btn.focus { outline: 2px solid var(--accent); }
+  .d-right { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .etabs { display: flex; gap: 6px; }
+  .etab { font-size: 10px; padding: 4px 12px; border-radius: 4px; background: #191d26; color: #6b7280; }
+  .etab.focus { background: var(--accent-soft); outline: 2px solid var(--accent); color: var(--text); }
+  .echips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .echip { height: 30px; border-radius: 6px; background: #191d26; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #9aa0ab; }
+  .echip.watched { background: #12151c; color: #4a5060; }
+  .echip.focus { background: var(--poster2); outline: 2px solid var(--accent); color: #fff; }
+
+  /* 播放器 */
+  .player-stage { position: relative; height: 300px; background: #000; border-radius: 10px; overflow: hidden; display: flex; }
+  .p-video { height: 100%; aspect-ratio: 9/16; background: linear-gradient(180deg, #262b36, #1a1e28); margin: 0 auto; position: relative; border-radius: 4px; }
+  .p-video .osd { position: absolute; top: 8px; left: 10px; font-size: 10px; color: rgba(255,255,255,0.65); }
+  .p-panel { position: absolute; right: 0; top: 0; bottom: 0; width: 230px; background: rgba(10,12,16,0.88); border-left: 1px solid #2a2e38; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .p-panel .ph { font-size: 11px; color: #9aa0ab; }
+  .p-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .p-chip { height: 26px; border-radius: 5px; background: #1d222c; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #6b7280; }
+  .p-chip.now { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+  .p-chip.focus { outline: 2px solid var(--accent); color: #fff; }
+  .p-ctrl { position: absolute; left: 0; right: 230px; bottom: 0; padding: 10px 14px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); display: flex; align-items: center; gap: 12px; }
+  .p-ctrl .btn { width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.12); display: flex; align-items: center; justify-content: center; font-size: 10px; color: #ddd; }
+  .p-ctrl .btn.focus { outline: 2px solid var(--accent); }
+  .p-ctrl .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.18); position: relative; }
+  .p-ctrl .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 34%; background: var(--accent); border-radius: 2px; }
+  .p-ctrl .bar .knob { position: absolute; left: 34%; top: 50%; transform: translate(-50%,-50%); width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .p-ctrl .time { font-size: 10px; color: #9aa0ab; }
+
+  /* 追剧页 */
+  .ftabs { display: flex; gap: 8px; }
+  .ftab { font-size: 11px; padding: 5px 16px; border-radius: 6px; background: #191d26; color: #6b7280; }
+  .ftab.focus { background: var(--accent-soft); outline: 2px solid var(--accent); color: var(--text); }
+  .ftab .dot { color: var(--accent); }
+
+  /* 设置页 */
+  .setrow { display: flex; justify-content: space-between; align-items: center; height: 38px; border-bottom: 1px solid #1e222b; padding: 0 6px; }
+  .setrow span { font-size: 11px; color: #9aa0ab; }
+  .setrow.focus { background: #1c2029; outline: 2px solid var(--accent); border-radius: 6px; }
+  .setrow .val { font-size: 10px; color: #4a5060; }
+
+  /* 确认题 */
+  .qcard { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .qcard.done { border-color: var(--recommend); }
+  .q-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .q-num { color: var(--accent); font-weight: 700; font-size: 15px; white-space: nowrap; }
+  .q-title { font-size: 17px; font-weight: 600; }
+  .q-body { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; }
+  .option { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  .option:hover { border-color: #4a5060; }
+  .option.selected { border-color: var(--accent); background: var(--accent-soft); }
+  .opt-key { font-weight: 700; color: var(--text-dim); flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--card-border); font-size: 13px; margin-top: 2px; }
+  .option.selected .opt-key { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .opt-body { flex: 1; }
+  .opt-label { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge-rec { font-size: 11px; font-weight: 600; color: var(--recommend); background: var(--recommend-soft); padding: 1px 8px; border-radius: 4px; }
+  .opt-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+  .other-row { margin-top: 6px; }
+  .other-row label { font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 6px; }
+  .other-row textarea { width: 100%; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 44px; }
+  .status { font-size: 12px; margin-top: 10px; color: var(--recommend); display: none; }
+  .qcard.done .status { display: block; }
+
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(15, 17, 21, 0.92); backdrop-filter: blur(8px); border-top: 1px solid var(--card-border); padding: 14px 24px; z-index: 10; }
+  .footer-inner { max-width: 920px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+  .progress-note { font-size: 13px; color: var(--text-dim); flex: 1; }
+  .btn-main { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-main:hover { filter: brightness(1.1); }
+  .btn-main:disabled { opacity: 0.4; cursor: not-allowed; }
+  .modal-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 20; align-items: center; justify-content: center; padding: 24px; }
+  .modal-mask.show { display: flex; }
+  .modal { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; width: 100%; max-width: 680px; padding: 24px; }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal textarea { width: 100%; min-height: 200px; background: #12141a; color: var(--text); border: 1px solid var(--card-border); border-radius: 8px; padding: 12px; font-size: 13px; font-family: Consolas, monospace; line-height: 1.6; resize: vertical; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 14px; justify-content: flex-end; }
+  .btn-copy { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .btn-close { background: transparent; color: var(--text-dim); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .copied-hint { color: var(--recommend); font-size: 13px; align-self: center; display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>红果 TV App <span class="tag">票 10 · 信息架构与导航设计</span></h1>
+    <p>基于 <b>blbl 13 项借鉴点</b> + <b>红果数据事实</b>（票 06/07）设计的 v1 全部页面低保真布局。橙框 = 焦点。
+       浏览完各页设计后，底部 <b>4 个设计分叉</b>待你拍板。</p>
+  </header>
+
+  <!-- ============ 全局框架 ============ -->
+  <div class="card">
+    <div class="sec-title">全局框架 <span class="pill">左侧竖直导航 · 基线已定</span></div>
+    <div class="sec-sub">侧边栏 5 项：首页 / 搜索 / 追剧 / 收藏 / 设置（榜单并入首页行，见 Q4）</div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item focus"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="row-label"><span>— 当前页内容区 —</span></div>
+        <div class="banner" style="flex:1; display:flex; align-items:center; justify-content:center; color:#4a5060; font-size:12px;">内容区（页面切换用 show/hide 复用，滚动位置/页内状态天然保留 — blbl 机制）</div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>焦点视觉</b>（blbl 参数全局统一）：1.04x / 120ms 缩放 + 2dp 描边，零阴影；焦点丢失可循四层记忆恢复（页面/面板/侧边栏往返/网格列）</li>
+      <li><b>侧边栏进出</b>：内容区<b>最左缘 + 首列</b>才能按 ← 进入侧边栏（几何判定，防误触）；侧边栏按 → 回内容区并恢复上次焦点</li>
+      <li><b>页面切换</b>：show/hide 复用根页面（blbl 机制），TV 上"切页不丢状态"是体感关键</li>
+      <li><b>竖版海报卡</b>：9:16（短剧特性，blbl 的 16:9 改造），角标 = 集数/连载状态，底部细条 = 观看进度</li>
+    </ul>
+  </div>
+
+  <!-- ============ 键位映射总表 ============ -->
+  <div class="card">
+    <div class="sec-title">遥控键位映射总表 <span class="pill">spec 交付物之一</span></div>
+    <table>
+      <tr><th>按键</th><th>全局</th><th>网格/首页</th><th>详情页</th><th>播放器</th></tr>
+      <tr><td>方向键</td><td>焦点移动</td><td>行内←→、行间↑↓；行首← 进侧边栏</td><td>左栏↔右栏（选集）、栏内移动</td><td>←→ seek ±10s；↑ 呼出控制层；↓ 收起；→ 到边缘进选集面板</td></tr>
+      <tr><td>OK</td><td>确认/激活</td><td>进详情</td><td>切换收藏/追剧状态、开始播放</td><td>播放/暂停；面板内选集</td></tr>
+      <tr><td>长按 OK</td><td>—</td><td>卡片快捷菜单（收藏/追剧）</td><td>—</td><td>3x 倍速（松开恢复，带进度反馈 — blbl HoldToTrigger）</td></tr>
+      <tr><td>返回</td><td colspan="4">六级链：关浮层/面板 → 退播放 → 回上级页面 → 焦点回内容区 → 双击退出（1.5s 窗口提示）</td></tr>
+      <tr><td>MENU</td><td>刷新当前页</td><td>刷新（重试通道）</td><td>更多菜单</td><td>设置面板（清晰度/倍速/自动连播开关）</td></tr>
+    </table>
+  </div>
+
+  <!-- ============ 首页 ============ -->
+  <div class="card">
+    <div class="sec-title">① 首页 <span class="pill">横滑行结构 — 待 Q2 确认</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item focus"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="banner"><div class="btitle">今日上新 · 总裁是我前女友</div><div class="bsub">95 集 · 连载中 · 真人剧</div></div>
+        <div>
+          <div class="row-label"><span>继续观看</span><span class="more">更多 ›</span></div>
+          <div class="prow">
+            <div class="poster focus"><div class="tagp">第12/95集</div><div class="prog"><i style="width:40%"></i></div></div>
+            <div class="poster"><div class="tagp">第3/80集</div><div class="prog"><i style="width:15%"></i></div></div>
+            <div class="poster"><div class="tagp">看到30集</div><div class="prog"><i style="width:70%"></i></div></div>
+            <div class="poster"><div class="tagp">第1/60集</div><div class="prog"><i style="width:5%"></i></div></div>
+            <div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+        <div>
+          <div class="row-label"><span>🔥 热播榜</span><span class="more">全部 ›</span></div>
+          <div class="prow">
+            <div class="poster"><div class="tagp">NO.1</div></div>
+            <div class="poster"><div class="tagp">NO.2</div></div>
+            <div class="poster"><div class="tagp">NO.3</div></div>
+            <div class="poster"><div class="tagp">NO.4</div></div>
+            <div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+        <div>
+          <div class="row-label"><span>真人剧 · 推荐</span><span class="more">更多 ›</span></div>
+          <div class="prow">
+            <div class="poster"><div class="tagp">完结</div></div>
+            <div class="poster"><div class="tagp">连载中</div></div>
+            <div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>继续观看</b>置顶为第一行（TV 场景第一入口，来自观看历史 WatchEntry）</li>
+      <li>数据支撑：榜单（4 块 rank 接口）、推荐 feed（filter_ids 已看去重）、"今日上新"（first_visible_time）——全部票 07 已验证可用</li>
+      <li>横向行自建（blbl 无现成实现）：行内 ←→ 滚动跟随，↑↓ 行间切换保持列位（网格列记忆）</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：进页落在"继续观看"首卡 → ↑↓ 跨行保持列位 → 行首按 ←（首列判定通过）进侧边栏 → banner 行为普通行处理</div>
+  </div>
+
+  <!-- ============ 搜索页 ============ -->
+  <div class="card">
+    <div class="sec-title">② 搜索 <span class="pill">键盘形态细节留票 11</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item focus"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="searchbox focus"><span>龙王殿</span><div class="cursor"></div></div>
+        <div class="sugg">
+          <div class="s focus">龙王殿 第二季</div>
+          <div class="s">龙王殿 第三季</div>
+          <div class="s">龙王殿之都市传说</div>
+          <div class="s">龙年大吉</div>
+        </div>
+        <div class="keyboard">
+          <div class="kb-key">1</div><div class="kb-key">2</div><div class="kb-key">3</div><div class="kb-key">4</div><div class="kb-key">5</div><div class="kb-key">6</div><div class="kb-key">7</div><div class="kb-key">8</div><div class="kb-key">9</div><div class="kb-key">0</div>
+          <div class="kb-key">Q</div><div class="kb-key">W</div><div class="kb-key">E</div><div class="kb-key">R</div><div class="kb-key">T</div><div class="kb-key">Y</div><div class="kb-key">U</div><div class="kb-key">I</div><div class="kb-key">O</div><div class="kb-key">P</div>
+          <div class="kb-key">A</div><div class="kb-key">S</div><div class="kb-key focus">D</div><div class="kb-key">F</div><div class="kb-key">G</div><div class="kb-key">H</div><div class="kb-key">J</div><div class="kb-key">K</div><div class="kb-key">L</div><div class="kb-key">⌫</div>
+          <div class="kb-key">Z</div><div class="kb-key">X</div><div class="kb-key">C</div><div class="kb-key">V</div><div class="kb-key">B</div><div class="kb-key">N</div><div class="kb-key">M</div><div class="kb-key">中文</div><div class="kb-key">空格</div><div class="kb-key">搜索</div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li>顶部输入框 + 联想词（suggestion 接口 300ms 停顿 ≤10 条，票 07 已验证）+ 全键盘网格（中文用 T9 拼音或首字母联想，形态在票 11 细化）</li>
+      <li>结果区替换键盘显示：网格 + <b>系列聚合卡片</b>（同系列多季叠加视觉，点击展开各季——票 11 定稿）</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：进页落输入框 → ↓ 到联想/键盘 → 联想 OK 直接搜索 → 键盘区 ↑↓←→ 移动、"搜索"键触发 → 结果网格后键盘隐藏、返回键回键盘</div>
+  </div>
+
+  <!-- ============ 详情页 ============ -->
+  <div class="card">
+    <div class="sec-title">③ 详情 + 选集 <span class="pill">分栏式 · 95 集是核心场景</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item focus"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="detail">
+          <div class="d-left">
+            <div class="d-poster"></div>
+            <div class="d-info">总裁是我前女友 · 95集<br>真人剧 · 连载中 · 今日上新<br>🔥 1.2亿热度 · 8.7分</div>
+            <div class="d-btns">
+              <div class="d-btn primary focus">▶ 继续播放 第12集</div>
+              <div class="d-btn">♡ 收藏</div>
+              <div class="d-btn">追剧</div>
+            </div>
+          </div>
+          <div class="d-right">
+            <div class="etabs">
+              <div class="etab focus">1-50</div><div class="etab">51-95</div><div class="etab">相关系列</div>
+            </div>
+            <div class="echips">
+              <div class="echip watched">1</div><div class="echip watched">2</div><div class="echip watched">3</div><div class="echip watched">4</div><div class="echip watched">5</div>
+              <div class="echip focus">12</div><div class="echip">13</div><div class="echip">14</div><div class="echip">15</div><div class="echip">16</div>
+              <div class="echip">17</div><div class="echip">18</div><div class="echip">19</div><div class="echip">20</div><div class="echip">21</div>
+            </div>
+            <div class="d-info" style="margin-top:6px;">简介：豪门恩怨+甜宠逆袭……（可展开）<br>相关系列：第1季 · 第2季 · 番外（标题正则归组 — 票 07 结论）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>分栏</b>（非 blbl 单列滚动）：TV 宽屏 16:9 下竖版海报+资料居左、选集居右一屏尽览；guoapp 宽屏也是分栏，习惯一致</li>
+      <li>选集大按钮 chip（blbl 参数：高 ≥48dp、minWidth ≥120dp、圆角）+ <b>50 集/组 tab</b>（Q3 确认粒度）；已看集灰显、当前集橙框</li>
+      <li>"相关系列" tab：同系列各季（标题正则归组，票 07 已验证机制）</li>
+      <li>评分来源注意：nativeDrama 无 score 字段，评分仅榜单路径有——详情页评分仅在榜单进入时展示（spec 实施要点）</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：进页落"继续播放"主按钮 → → 进选集区（tab → chip 网格）→ 返回键回左栏；chip OK 直接从该集播</div>
+  </div>
+
+  <!-- ============ 播放器 ============ -->
+  <div class="card">
+    <div class="sec-title">④ 播放器 <span class="pill">竖屏内容 × TV 横屏 — 本 App 最大特色设计</span></div>
+    <div class="player-stage">
+      <div class="p-video">
+        <div class="osd">▶ 第12集 · 1080P</div>
+      </div>
+      <div class="p-panel">
+        <div class="ph">选集 · 95集</div>
+        <div class="p-list">
+          <div class="p-chip">11</div><div class="p-chip now">12</div><div class="p-chip focus">13</div>
+          <div class="p-chip">14</div><div class="p-chip">15</div><div class="p-chip">16</div>
+          <div class="p-chip">17</div><div class="p-chip">18</div><div class="p-chip">…</div>
+        </div>
+        <div class="ph" style="margin-top:4px;">龙王殿 · 系列</div>
+        <div class="p-list"><div class="p-chip">S1</div><div class="p-chip">S2</div><div class="p-chip">S3</div></div>
+      </div>
+      <div class="p-ctrl">
+        <div class="btn focus">⏸</div>
+        <div class="bar"><i></i><div class="knob"></div></div>
+        <span class="time">08:12 / 20:30</span>
+        <div class="btn">倍速</div><div class="btn">清晰度</div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li><b>竖屏 9:16 视频居中，右侧常驻选集/系列面板</b>（Q1 确认）：短剧换集是最高频操作，侧栏常驻 = 换集只要 2 次按键（→ 然后 OK）</li>
+      <li>底部控制条：<b>常驻细进度条</b>（blbl 机制——控制层收起时仍可见进度）+ 展开后播放/倍速/清晰度按钮</li>
+      <li>自动连播下一集 + 播放位置每 5 秒落盘（断点续播，沿用 guoapp WatchEntry 结构）</li>
+      <li>取流已解（票 04）：Go 层本地流服务出 CDN 直链+CENC 解密，Media3 只管播</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：进播放器无焦点（纯净观看）→ OK 呼出控制层（落播放按钮）→ ←→ 在控制条 seek → → 过控制条边缘进选集面板 → 返回键：收控制层 → 再按退回详情页</div>
+  </div>
+
+  <!-- ============ 追剧 ============ -->
+  <div class="card">
+    <div class="sec-title">⑤ 追剧 + 历史 <span class="pill">纯本地数据 · 含"有更新"筛选</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item focus"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="ftabs">
+          <div class="ftab focus">在看</div><div class="ftab">有更新 <span class="dot">●3</span></div><div class="ftab">想看</div><div class="ftab">已看</div><div class="ftab">历史</div>
+        </div>
+        <div class="prow" style="margin-top:4px;">
+          <div class="poster focus"><div class="tagp">第12/95集</div><div class="prog"><i style="width:40%"></i></div></div>
+          <div class="poster"><div class="tagp">新到31集</div><div class="prog"><i style="width:60%"></i></div></div>
+          <div class="poster"><div class="tagp">第3/80集</div><div class="prog"><i style="width:15%"></i></div></div>
+          <div class="poster"></div><div class="poster"></div><div class="poster"></div>
+        </div>
+        <div class="prow">
+          <div class="poster"><div class="tagp">完结</div></div><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li>筛选 tab：在看 / <b>有更新</b>（新集+新季提醒，guoapp FollowState + seriesSeasons 机制照搬）/ 想看 / 已看 / 历史</li>
+      <li>卡片角标显示进度（第 N/M 集），OK 直接续播（跳过详情页——短剧高频路径）</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：进页落"在看"tab → ↓ 进网格 → tab ←→ 切换筛选（焦点留在 tab 行）→ 卡片 OK 续播</div>
+  </div>
+
+  <!-- ============ 收藏 + 设置 ============ -->
+  <div class="card">
+    <div class="sec-title">⑥ 收藏 & 设置 <span class="pill">轻页面</span></div>
+    <div class="tv">
+      <div class="sidebar">
+        <div class="nav-item"><div class="ico"></div><span>首页</span></div>
+        <div class="nav-item"><div class="ico"></div><span>搜索</span></div>
+        <div class="nav-item"><div class="ico"></div><span>追剧</span></div>
+        <div class="nav-item focus"><div class="ico"></div><span>收藏</span></div>
+        <div class="nav-item"><div class="ico"></div><span>设置</span></div>
+      </div>
+      <div class="content">
+        <div class="prow">
+          <div class="poster focus"><div class="tagp">95集</div></div>
+          <div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+        </div>
+        <div class="prow">
+          <div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div><div class="poster"></div>
+        </div>
+        <div style="border-top:1px solid #1e222b; padding-top:10px;">
+          <div class="setrow focus"><span>（切到设置页示意）默认清晰度</span><span class="val">1080P ›</span></div>
+          <div class="setrow"><span>缓存管理</span><span class="val">封面 128MB ›</span></div>
+          <div class="setrow"><span>取流空响应监控</span><span class="val">已开启 · 0 次</span></div>
+          <div class="setrow"><span>关于</span><span class="val">v1.0.0 ›</span></div>
+        </div>
+      </div>
+    </div>
+    <ul class="keypts">
+      <li>收藏 = 网格页（同追剧网格范式，纯本地 Drama 快照）；长按 OK = 移出收藏/加追剧</li>
+      <li>设置含：<b>取流空响应监控</b>开关（票 04 建议的兜底——若服务端升级校验 X-Ladon 真实算法，用户可第一时间看到异常计数）</li>
+    </ul>
+    <div class="focusflow"><b>焦点流转</b>：标准侧边栏 + 内容网格/列表范式，无特殊链路</div>
+  </div>
+
+  <!-- ============ 确认题 ============ -->
+  <h2 style="font-size:18px; margin:32px 0 16px;">四个设计分叉，请拍板</h2>
+
+  <div class="qcard" data-q="1" data-name="播放页形态">
+    <div class="q-head"><span class="q-num">Q1</span><span class="q-title">播放页：选集面板常驻还是按需呼出？</span></div>
+    <div class="q-body">竖屏视频在 TV 上只占屏宽约 1/3，两侧有大片留白——右侧空间怎么用是本 App 最有特色的决策。</div>
+    <div class="option" data-value="右侧常驻选集面板（沉浸与效率平衡）">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">右侧常驻选集/系列面板 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">换集 = → + OK 两键（短剧最高频操作）；面板半透明不抢焦点，不看选集时视觉可淡化；左侧留白可放剧情信息</div>
+      </div>
+    </div>
+    <div class="option" data-value="纯净全屏 + OK 呼出面板（blbl 式）">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">纯净模式：视频居中放大，选集按需呼出</div>
+        <div class="opt-desc">观看最沉浸（blbl 范式）；但换集要 OK→→→OK 多步，对"一集 2 分钟连刷"的短剧节奏偏慢</div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（自定义答案 / 补充，可选）</label>
+      <textarea placeholder=""></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="2" data-name="首页结构">
+    <div class="q-head"><span class="q-num">Q2</span><span class="q-title">首页：横滑行流还是分类 Tab 网格？</span></div>
+    <div class="q-body">原型①按横滑行画；另一种是 guoapp 式"分类 Tab + 整页网格"。</div>
+    <div class="option" data-value="横滑行流（Netflix 式）">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">横滑行流 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">继续观看/榜单/分类/推荐多行同屏，↑↓ 扫视效率高，符合 TV 惯例；成本：横向行组件需自建（blbl 无现成，DpadGridController 思路可参照）</div>
+      </div>
+    </div>
+    <div class="option" data-value="分类 Tab + 整页网格（guoapp 式）">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">分类 Tab + 整页网格</div>
+        <div class="opt-desc">实现简单（复用网格范式）、单类浏览密度高；但"继续观看/榜单"入口要另找位置，扫视多类内容要切 Tab</div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（可选）</label>
+      <textarea placeholder=""></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="3" data-name="选集分组粒度">
+    <div class="q-head"><span class="q-num">Q3</span><span class="q-title">大集数选集：分组 tab 粒度？</span></div>
+    <div class="q-body">红果短剧 80-100 集常见（样例剧 95 集），chip 直接铺会失控（原型③按 50/组画）。</div>
+    <div class="option" data-value="50 集/组">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">50 集/组 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">95 集 → 2 个 tab；单组 50 个 chip 在分栏右栏约 3 屏滚完，粒度与 guoapp 详情页一致</div>
+      </div>
+    </div>
+    <div class="option" data-value="20 集/组">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">20 集/组</div>
+        <div class="opt-desc">单组更短定位快，但 95 集 → 5 个 tab，tab 行本身成为导航负担</div>
+      </div>
+    </div>
+    <div class="option" data-value="不分组 + 快速定位">
+      <div class="opt-key">c</div>
+      <div class="opt-body">
+        <div class="opt-label">不分组，chip 顺排 + "跳到当前/输入集数"</div>
+        <div class="opt-desc">guoapp 有输入集数跳转；TV 上输数字不如 tab+网格直接</div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（可选）</label>
+      <textarea placeholder=""></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+
+  <div class="qcard" data-q="4" data-name="侧边栏清单">
+    <div class="q-head"><span class="q-num">Q4</span><span class="q-title">侧边栏导航项：榜单要不要独立入口？</span></div>
+    <div class="q-body">原型按 5 项画（首页/搜索/追剧/收藏/设置），榜单并入首页行。</div>
+    <div class="option" data-value="5 项（榜单并入首页行）">
+      <div class="opt-key">a</div>
+      <div class="opt-body">
+        <div class="opt-label">5 项：首页/搜索/追剧/收藏/设置 <span class="badge-rec">推荐</span></div>
+        <div class="opt-desc">侧边栏保持一屏 5 项（TV 遥控 ↑↓ 步数少）；4 块榜单在首页以行呈现（热播榜/新剧榜/漫剧榜/AI剧榜），与"更多›"进完整榜单页</div>
+      </div>
+    </div>
+    <div class="option" data-value="6 项（榜单独立入口）">
+      <div class="opt-key">b</div>
+      <div class="opt-body">
+        <div class="opt-label">6 项：+ 榜单独立入口</div>
+        <div class="opt-desc">榜单重度用户直达；代价：侧边栏多一项，首页信息密度略降</div>
+      </div>
+    </div>
+    <div class="other-row">
+      <label>其他（可选）</label>
+      <textarea placeholder=""></textarea>
+    </div>
+    <div class="status">✓ 已作答</div>
+  </div>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div class="progress-note" id="progress-note">已作答 0 / 4</div>
+    <button class="btn-main" id="btn-generate" disabled>生成答案并复制</button>
+  </div>
+</footer>
+
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <h3>答案已生成 —— 复制下面的文本，粘贴回 Claude 会话</h3>
+    <textarea id="answer-text" readonly></textarea>
+    <div class="modal-actions">
+      <span class="copied-hint" id="copied-hint">✓ 已复制到剪贴板</span>
+      <button class="btn-close" id="btn-close">关闭</button>
+      <button class="btn-copy" id="btn-copy">复制</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const cards = Array.from(document.querySelectorAll('.qcard'));
+  const btnGenerate = document.getElementById('btn-generate');
+  const progressNote = document.getElementById('progress-note');
+
+  function updateProgress() {
+    const answered = cards.filter(c => c.dataset.answer).length;
+    progressNote.textContent = `已作答 ${answered} / ${cards.length}`;
+    btnGenerate.disabled = answered < cards.length;
+  }
+
+  cards.forEach(card => {
+    const options = card.querySelectorAll('.option');
+    options.forEach(opt => {
+      opt.addEventListener('click', () => {
+        options.forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+        card.dataset.answer = opt.dataset.value;
+        card.classList.add('done');
+        updateProgress();
+      });
+    });
+  });
+
+  function buildAnswer() {
+    let out = '## 票 10 设计分叉拍板\n\n';
+    cards.forEach(card => {
+      const q = card.dataset.q, name = card.dataset.name;
+      const other = card.querySelector('textarea').value.trim();
+      out += `Q${q}（${name}）：${card.dataset.answer}\n`;
+      if (other) out += `　补充：${other}\n`;
+      out += '\n';
+    });
+    out += '（其他页面设计若无异议视为通过；有意见请在此追加）';
+    return out;
+  }
+
+  btnGenerate.addEventListener('click', () => {
+    document.getElementById('answer-text').value = buildAnswer();
+    document.getElementById('modal-mask').classList.add('show');
+    copyAnswer();
+  });
+
+  function copyAnswer() {
+    const ta = document.getElementById('answer-text');
+    ta.select();
+    navigator.clipboard.writeText(ta.value).then(() => {
+      document.getElementById('copied-hint').style.display = 'inline';
+      setTimeout(() => document.getElementById('copied-hint').style.display = 'none', 2000);
+    }).catch(() => { document.execCommand('copy'); });
+  }
+
+  document.getElementById('btn-copy').addEventListener('click', copyAnswer);
+  document.getElementById('btn-close').addEventListener('click', () => document.getElementById('modal-mask').classList.remove('show'));
+  document.getElementById('modal-mask').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+</script>
+</body>
+</html>
