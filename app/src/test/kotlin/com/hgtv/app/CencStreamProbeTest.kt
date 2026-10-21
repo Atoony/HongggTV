@@ -15,7 +15,7 @@ class CencStreamProbeTest {
     fun `流形态 - 拉取头部并分析加密 box`() {
         assumeTrue(live())
         val api = HongguoApi()
-        val streams = api.fetchStreams("7688396347107445822")
+        val streams = kotlinx.coroutines.runBlocking { api.fetchStreams("7688396347107445822") }
         val opt = streams.maxByOrNull { it.quality } ?: throw IllegalStateException("无流")
         val url = opt.urls.first()
         println("URL=$url")

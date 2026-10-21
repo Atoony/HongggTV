@@ -32,11 +32,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -94,7 +96,12 @@ fun AppRoot() {
         try {
             detailData = api.fetchDetail(sid)
         } catch (e: Exception) {
-            detailError = e.message
+            // App 通道被风控时兜底：网页播放页带全集 vid_list（游客可访问）
+            try {
+                detailData = web.playerDetail(sid)
+            } catch (e2: Exception) {
+                detailError = "${e.message}（网页兜底也失败：${e2.message}）"
+            }
         }
     }
 
@@ -132,8 +139,7 @@ fun AppRoot() {
                 .weight(1f)
                 .fillMaxHeight()
                 .focusRequester(contentRequester)
-                .focusGroup()
-                .focusRestorer(),
+                .focusGroup(),
         ) {
             when (current) {
                 NavDest.HOME -> HomePage(
@@ -194,6 +200,7 @@ fun AppRoot() {
                 startEpisode = episode,
                 startPositionMs = playResumeMs,
                 watchedEpisodes = entry?.let { (1 until it.episode).toSet() } ?: emptySet(),
+                freeEpisodeCnt = data.freeEpisodeCnt,
                 api = api,
                 watchStore = watchStore,
                 onExit = {
@@ -237,6 +244,8 @@ private fun SidebarItem(
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "scale")
     val shape = RoundedCornerShape(8.dp)
+    // 选中框跟随焦点（TV 惯例）；当前页在未聚焦时以左侧竖条标记
+    val highlighted = focused || selected
 
     Box(
         Modifier
@@ -244,12 +253,21 @@ private fun SidebarItem(
             .height(56.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
-            .background(if (selected) PrimarySoft else Color.Transparent, shape)
+            .background(if (highlighted) PrimarySoft else Color.Transparent, shape)
             .border(
                 width = 2.dp,
-                color = if (selected) Primary else Color.Transparent,
+                color = if (focused) Primary else Color.Transparent,
                 shape = shape,
             )
+            .drawBehind {
+                if (selected && !focused) {
+                    drawRoundRect(
+                        color = Primary,
+                        topLeft = Offset(0f, size.height * 0.22f),
+                        size = Size(3.dp.toPx(), size.height * 0.56f),
+                    )
+                }
+            }
             .focusProperties { right = rightTarget }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,

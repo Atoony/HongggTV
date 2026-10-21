@@ -36,6 +36,17 @@ class StreamException(val code: String, message: String) : Exception("[$code] $m
  */
 class StreamRepository(private val api: HongguoApi) {
 
+    companion object {
+        /** 网页兜底线路：游客直链 360p 干净 MP4（无 CENC），App 通道风控/失败时的最后一线。 */
+        fun webFallbackOption(videoId: String): HongguoApi.StreamOption = HongguoApi.StreamOption(
+            name = "网页直链",
+            quality = 360,
+            codec = "h264",
+            urls = listOf("https://hongguoduanju.com/video/public/$videoId/360p.mp4"),
+            cencKey = null,
+        )
+    }
+
     suspend fun fetchStreamsWithRetry(videoId: String): List<HongguoApi.StreamOption> {
         val backoffs = longArrayOf(0, 1000, 3000)
         var lastError: Exception? = null
@@ -55,6 +66,11 @@ class StreamRepository(private val api: HongguoApi) {
             } catch (e: Exception) {
                 lastError = StreamException.fetch("网络错误: ${e.message}")
             }
+        }
+        // 多线路 fallback 的最后一环：切网页直链（360p 无 DRM），免费集可直接播
+        if (videoId.length >= 10) {
+            Log.w("HgWebFallback", "App 取流重试耗尽，切网页直链 videoId=$videoId err=${lastError?.message}")
+            return listOf(webFallbackOption(videoId))
         }
         throw lastError ?: StreamException.fetch("取流重试耗尽 videoId=$videoId")
     }

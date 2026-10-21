@@ -25,7 +25,7 @@ class LiveProbeTest {
     fun `详情探针 - 全套签名头返回有效剧集数据`() {
         assumeTrue(live())
         val api = HongguoApi()
-        val detail = api.fetchDetail(SERIES_ID)
+        val detail = kotlinx.coroutines.runBlocking { api.fetchDetail(SERIES_ID) }
         assertTrue(detail.episodes.isNotEmpty())
         assertEquals(SERIES_ID, detail.seriesId)
         detail.episodes.forEachIndexed { i, ep -> assertEquals(i + 1, ep.index) }
@@ -37,7 +37,7 @@ class LiveProbeTest {
     fun `取流探针 - video_list 非空且含高清档`() {
         assumeTrue(live())
         val api = HongguoApi()
-        val streams = api.fetchStreams(VIDEO_ID)
+        val streams = kotlinx.coroutines.runBlocking { api.fetchStreams(VIDEO_ID) }
         assertTrue(streams.isNotEmpty())
         val best = streams.first()
         assertTrue(best.quality >= 720)
@@ -60,7 +60,9 @@ class LiveProbeTest {
                 "video_platform" to JVal.num(3),
             ),
         )
-        val (status, _, content) = api.request("/novel/player/video_model/v1/", body, skipLadonArgus = true)
+        val (status, _, content) = kotlinx.coroutines.runBlocking {
+            api.request("/novel/player/video_model/v1/", body, skipLadonArgus = true)
+        }
         assertEquals(200, status)
         assertTrue("去掉 X-Ladon/X-Argus 应被 200+0 静默拒绝，实际 ${content.size} 字节", content.isEmpty())
         println("消融 OK：HTTP $status ${content.size} 字节（风控头确实生效）")

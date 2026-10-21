@@ -34,7 +34,7 @@ class HongguoFeed(
     )
 
     /** landpage 推荐行（SPEC §6.1：18 条/页；filter_ids 已看去重）。genre=short_play。 */
-    fun landPage(offset: Int, sessionId: String, filterIds: List<String>): LandPage {
+    suspend fun landPage(offset: Int, sessionId: String, filterIds: List<String>): LandPage {
         val body = JVal.obj(
             "req_scene" to JVal.str("default"),
             "offset" to JVal.num(offset.toLong()),
@@ -90,8 +90,10 @@ class HongguoFeed(
     }
 
     /** Web 热播榜（SPEC §6.1：/rank/hot-drama；content 为空时走 mergeLoaderData script 标签）。 */
-    fun hotDramaRank(): List<RankItem> {
-        val (status, body) = webRawGet("/rank/hot-drama")
+    suspend fun hotDramaRank(): List<RankItem> {
+        val (status, body) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            webRawGet("/rank/hot-drama") // 挂 IO：LaunchedEffect 主线程直调会 NetworkOnMainThread
+        }
         if (status != 200 || body.isEmpty()) throw IllegalStateException("热播榜请求失败 HTTP $status")
         val html = String(body, Charsets.UTF_8)
         val router = parseRouter(html) ?: throw IllegalStateException("热播榜解析失败")

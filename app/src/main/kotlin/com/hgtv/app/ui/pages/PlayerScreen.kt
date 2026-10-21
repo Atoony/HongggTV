@@ -104,6 +104,7 @@ fun PlayerScreen(
     startEpisode: Int,
     startPositionMs: Long,
     watchedEpisodes: Set<Int>,
+    freeEpisodeCnt: Int = Int.MAX_VALUE,
     api: HongguoApi,
     watchStore: WatchStore,
     onExit: () -> Unit,
@@ -139,9 +140,13 @@ fun PlayerScreen(
             return
         }
         val uri = option.urls[urlIndex.coerceIn(0, option.urls.size - 1)]
+        val webLine = uri.contains("hongguoduanju.com")
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("com.phoenix.read/73532")
-            .setDefaultRequestProperties(mapOf("Referer" to "https://novel.snssdk.com/"))
+            .setDefaultRequestProperties(
+                if (webLine) mapOf("Referer" to "https://hongguoduanju.com/")
+                else mapOf("Referer" to "https://novel.snssdk.com/")
+            )
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(8_000)
             .setAllowCrossProtocolRedirects(true)
@@ -157,10 +162,16 @@ fun PlayerScreen(
     LaunchedEffect(currentEpisode, loadToken) {
         val ep = episodes.firstOrNull { it.index == currentEpisode } ?: return@LaunchedEffect
         osd = "第${ep.index}集"
-        buffering = true
-        error = null
         reconnects = 0
         urlIndex = 0
+        // 网页兜底详情只带免费集直链：非免费集直接走错误页，不空跑取流重试
+        if (ep.index > freeEpisodeCnt) {
+            buffering = false
+            error = PlayError("E-1003", "第${ep.index}集为非免费集，当前线路仅支持前 $freeEpisodeCnt 集")
+            return@LaunchedEffect
+        }
+        buffering = true
+        error = null
         try {
             options = streamRepo.fetchStreamsWithRetry(ep.videoId)
             prepareAt(if (ep.index == startEpisode) startPositionMs else 0L)

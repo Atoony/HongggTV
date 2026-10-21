@@ -102,6 +102,7 @@ class HongguoApi(
         val categories: List<String>,
         val heat: String,
         val episodes: List<Episode>,
+        val freeEpisodeCnt: Int = Int.MAX_VALUE, // 网页兜底可播的免费集数（App 通道未知则不限）
     )
 
     data class StreamOption(
@@ -139,13 +140,13 @@ class HongguoApi(
         "iid" to identity.installId,
     )
 
-    /** 签名 + 发送；返回 (status, headers, body)。skipLadonArgus 供消融探针使用。 */
-    fun request(
+    /** 签名 + 发送；返回 (status, headers, body)。skipLadonArgus 供消融探针使用。挂 IO：主线程直调会 NetworkOnMainThread。 */
+    suspend fun request(
         path: String,
         body: JVal?,
         timeoutMs: Int = 20_000,
         skipLadonArgus: Boolean = false,
-    ): Triple<Int, Map<String, List<String>>, ByteArray> {
+    ): Triple<Int, Map<String, List<String>>, ByteArray> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val now = nowMs()
         val ts = now / 1000
         val query = commonQuery().toMutableMap()
@@ -155,7 +156,7 @@ class HongguoApi(
 
         val conn = URL("$baseURL$path?$rawQuery").openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
-        conn.connectTimeout = timeoutMs
+        conn.connectTimeout = 8_000 // 连接快速失败（主机不可达时缩短重试链总时长）
         conn.readTimeout = timeoutMs
         conn.doOutput = bodyBytes != null
         conn.setRequestProperty("User-Agent", UA)
@@ -182,12 +183,12 @@ class HongguoApi(
             .filter { it.key != null }
             .associate { (k, v) -> k to v }
         conn.disconnect()
-        return Triple(status, headers, content)
+        Triple(status, headers, content)
     }
 
     // ---------- 业务：详情 ----------
 
-    fun fetchDetail(seriesId: String): SeriesDetail {
+    suspend fun fetchDetail(seriesId: String): SeriesDetail {
         val (status, _, body) = request(
             "/novel/player/video_detail/v1/",
             JVal.obj("series_id" to JVal.str(seriesId)),
@@ -275,7 +276,7 @@ class HongguoApi(
     // ---------- 业务：取流 ----------
 
     /** 返回按质量降序的全部可选流；首选 = 第一项。 */
-    fun fetchStreams(videoId: String): List<StreamOption> {
+    suspend fun fetchStreams(videoId: String): List<StreamOption> {
         if (!NUMERIC_ID.matches(videoId)) throw ApiException("红果视频 ID 无效")
         val body = JVal.obj(
             "video_id" to JVal.str(videoId),

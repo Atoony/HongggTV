@@ -333,6 +333,82 @@ class HongguoWeb(
         return null
     }
 
+    // ---------- 播放页详情兜底（游客网页通道：seriesDetail + 全集 vid_list，App 通道被风控时可用） ----------
+
+    suspend fun playerDetail(seriesId: String): HongguoApi.SeriesDetail = withContext(Dispatchers.IO) {
+        val (status, body) = httpGet("$baseURL/player/$seriesId", "$baseURL/")
+        if (status != 200 || body.isEmpty()) throw IllegalStateException("播放页不可用 HTTP $status")
+        parsePlayerDetail(String(body, Charsets.UTF_8))
+    }
+
+    internal fun parsePlayerDetail(html: String): HongguoApi.SeriesDetail {
+        val detail = extractJsonObj(html, "seriesDetail") ?: throw IllegalStateException("播放页无 seriesDetail")
+        val vidList = (JsonParser.arr(detail["vid_list"]) ?: emptyList())
+            .map { JsonParser.str(it) }.filter { it.isNotEmpty() }
+        if (vidList.isEmpty()) throw IllegalStateException("播放页无 vid_list")
+        val episodeCnt = JsonParser.num(detail["episode_cnt"]).toInt().takeIf { it > 0 } ?: vidList.size
+        val statusRaw = JsonParser.str(detail, "series_status").ifEmpty {
+            JsonParser.str(JsonParser.nested(detail, "series_episode_info"), "series_status")
+        }
+        val tags = ArrayList<String>()
+        JsonParser.arr(detail["tags"])?.forEach { t ->
+            val n = when (t) {
+                is String -> t
+                else -> JsonParser.str(JsonParser.obj(t), "name", "tag_name", "title")
+            }
+            if (n.isNotEmpty() && !tags.contains(n)) tags.add(n)
+        }
+        return HongguoApi.SeriesDetail(
+            seriesId = JsonParser.str(detail, "series_id").ifEmpty { seriesIdFallback(detail) },
+            title = JsonParser.str(detail, "series_name"),
+            cover = JsonParser.str(detail, "series_cover"),
+            intro = JsonParser.str(detail, "series_intro"),
+            episodeCnt = episodeCnt,
+            remark = JsonParser.str(detail, "episode_right_text"),
+            releaseStatus = when (statusRaw) {
+                "1" -> "finished"
+                "0" -> "ongoing"
+                else -> ""
+            },
+            categories = tags,
+            heat = "",
+            episodes = vidList.mapIndexed { i, v -> HongguoApi.Episode(videoId = v, index = i + 1) },
+            freeEpisodeCnt = JsonParser.num(detail["accessible_episode_cnt"]).toInt()
+                .takeIf { it > 0 } ?: vidList.size,
+        )
+    }
+
+    private fun seriesIdFallback(detail: Map<String, Any?>): String =
+        JsonParser.str(detail, "series_id_str")
+
+    /** 从 HTML 中按平衡花括号提取 "key":{...} JSON 对象（内嵌状态岛通用提取器；字符串内花括号安全）。 */
+    private fun extractJsonObj(html: String, key: String): Map<String, Any?>? {
+        val idx = html.indexOf("\"$key\":{")
+        if (idx < 0) return null
+        val start = html.indexOf('{', idx)
+        var depth = 0
+        var inStr = false
+        var esc = false
+        for (i in start until html.length) {
+            val c = html[i]
+            if (esc) { esc = false; continue }
+            when {
+                inStr && c == '\\' -> esc = true
+                c == '"' -> inStr = !inStr
+                !inStr && c == '{' -> depth++
+                !inStr && c == '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        return runCatching {
+                            JsonParser.parse(html.substring(start, i + 1)) as? Map<String, Any?>
+                        }.getOrNull()
+                    }
+                }
+            }
+        }
+        return null
+    }
+
     // ---------- 工具 ----------
 
     private fun labelsOf(s: Series, season: Int): String = s.labels[season] ?: ""

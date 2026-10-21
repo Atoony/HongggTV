@@ -77,7 +77,8 @@ fun HomePage(
         try {
             rankItems = feed.hotDramaRank()
         } catch (e: Exception) {
-            rankError = e.message
+            android.util.Log.w("HgHome", "热播榜失败", e)
+            rankError = e.message ?: "热播榜加载失败"
         }
     }
     LaunchedEffect(Unit) {
