@@ -33,8 +33,8 @@ class WatchStore(private val context: Context) {
         fun serialize(entries: List<WatchEntry>): String =
             JVal.obj(
                 "v" to JVal.num(1),
-                "list" to JVal.JObj(entries.map { e ->
-                    e.seriesId to JVal.obj(
+                "list" to JVal.JArr(entries.map { e ->
+                    JVal.obj(
                         "seriesId" to JVal.str(e.seriesId),
                         "title" to JVal.str(e.title),
                         "cover" to JVal.str(e.cover),
@@ -48,7 +48,8 @@ class WatchStore(private val context: Context) {
             ).serialize()
 
         fun deserialize(text: String): List<WatchEntry> {
-            val root = JsonParser.parse(text) as? Map<String, Any?> ?: return emptyList()
+            if (text.isBlank()) return emptyList()
+            val root = runCatching { JsonParser.parse(text) }.getOrNull() as? Map<String, Any?> ?: return emptyList()
             val list = JsonParser.arr(root["list"]) ?: return emptyList()
             return list.mapNotNull { row ->
                 val m = JsonParser.obj(row) ?: return@mapNotNull null
