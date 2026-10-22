@@ -74,15 +74,15 @@ class HongguoWeb(
         }
 
         /** 标题季号解析：(base, season, unit, label)；无季返回 ("",0,"","") */
-        internal fun seasonOf(title: String): Tuple4 {
+        internal fun seasonOf(title: String): SeasonInfo {
             val t = Normalizer.normalize(title.trim(), Normalizer.Form.NFKC)
-            val match = SEASON_SUFFIX.find(t) ?: return Tuple4("", 0, "", "")
+            val match = SEASON_SUFFIX.find(t) ?: return SeasonInfo("", 0, "", "")
             val base = t.substring(0, match.range.first).trimEnd { it.isWhitespace() || !it.isLetterOrDigit() }
             val label = match.groupValues[1]
             val unit = match.groupValues[2]
-            val number = parseCnNumber(label) ?: return Tuple4("", 0, "", "")
-            if (base.isEmpty() || number < 1 || number > 200) return Tuple4("", 0, "", "")
-            return Tuple4(base, number, unit, label)
+            val number = parseCnNumber(label) ?: return SeasonInfo("", 0, "", "")
+            if (base.isEmpty() || number < 1 || number > 200) return SeasonInfo("", 0, "", "")
+            return SeasonInfo(base, number, unit, label)
         }
 
         private fun parseCnNumber(label: String): Int? {
@@ -195,6 +195,9 @@ class HongguoWeb(
     }
 
     // ---------- 搜索页 ----------
+    // 已知坑（SPEC §6.1）：带 page 参数请求时服务端 301 重定向到剥参 URL。
+    // 本实现从不携带 page 参数（关键词走路径、MVP 单页结果），instanceFollowRedirects=true
+    // 仅兜底 HTML 入口跳转，301 剥参路径天然不触发；线上探针（WebProbeTest）已验证。
 
     suspend fun searchPage(keyword: String): Pair<List<WebDrama>, Int> {
         val q = normalizeKeyword(keyword) ?: throw IllegalArgumentException("无效搜索词")
@@ -542,7 +545,7 @@ class HongguoWeb(
         return out
     }
 
-    data class Tuple4(val base: String, val season: Int, val unit: String, val label: String)
+    data class SeasonInfo(val base: String, val season: Int, val unit: String, val label: String)
 
     private fun goEscapeQuery(s: String): String =
         s.toByteArray(Charsets.UTF_8).joinToString("") { b ->

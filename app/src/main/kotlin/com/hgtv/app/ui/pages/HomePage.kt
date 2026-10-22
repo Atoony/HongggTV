@@ -49,6 +49,7 @@ import com.hgtv.app.ui.theme.OnBg
 import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.PosterPlaceholder
 import com.hgtv.app.ui.theme.Primary
+import com.hgtv.app.ui.theme.Scrim
 import com.hgtv.app.ui.theme.SeasonGold
 import com.hgtv.app.ui.theme.Surface
 
@@ -197,12 +198,26 @@ private fun RowHeader(text: String) {
     Text(text, style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold), color = OnBg)
 }
 
+/** 海报角标：scrim 底（DESIGN §2.4）+ 可配色文字。 */
+@Composable
+private fun Badge(text: String, color: Color) {
+    Box(
+        Modifier
+            .padding(8.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Scrim)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        Text(text, color = color, fontSize = 11.sp, maxLines = 1)
+    }
+}
+
 @Composable
 private fun RowHint(text: String) {
     Text(text, fontSize = 14.sp, color = Dim)
 }
 
-/** 海报卡：2:3 海报 + 底部标题 + 左上角徽标 + 左下季号金标（DESIGN §2.4/§6）。 */
+/** 海报卡：2:3 海报（既有全局比例）+ 底部标题 + 左上角徽标 + 左下季号金标（DESIGN §2.4/§6 角标规范）。 */
 @Composable
 fun PosterCard(title: String, badge: String, cover: String, onClick: () -> Unit, seasonBadge: String = "") {
     val interaction = remember { MutableInteractionSource() }
@@ -230,26 +245,11 @@ fun PosterCard(title: String, badge: String, cover: String, onClick: () -> Unit,
                 )
             }
             if (badge.isNotEmpty()) {
-                Box(
-                    Modifier
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x99000000))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(badge, color = Color.White, fontSize = 11.sp, maxLines = 1)
-                }
+                Badge(badge, color = Color.White)
             }
             if (seasonBadge.isNotEmpty()) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x99000000))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                ) {
-                    Text(seasonBadge, color = SeasonGold, fontSize = 11.sp, maxLines = 1)
+                Box(Modifier.align(Alignment.BottomStart)) {
+                    Badge(seasonBadge, color = SeasonGold)
                 }
             }
             if (focused) {

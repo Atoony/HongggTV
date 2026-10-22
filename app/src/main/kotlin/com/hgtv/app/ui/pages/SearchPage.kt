@@ -119,6 +119,7 @@ fun SearchPage(
 
     // 联想 300ms 停顿刷新：每次按键重启 effect，天然防抖（SPEC §3.2）
     LaunchedEffect(query, pinyinMode) {
+        if (emptyNotice.isNotEmpty()) emptyNotice = "" // 用户重新打字即撤销空态提示
         if (query.isBlank()) {
             suggestions = emptyList()
             nameHits = emptyList()
@@ -233,26 +234,21 @@ private fun SearchBoard(
 
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         QueryBox(query, pinyinMode)
-        // 候选区：空输入 = 空态提示 / 历史（显示于联想位）；有输入 = 联想 / 直达 / 拼音
-        if (query.isBlank()) {
-            if (emptyNotice.isNotEmpty()) {
-                EmptyNotice(emptyNotice)
-            } else {
-                HistoryRow(history, onPickHistory, onClearHistory)
+        // 候选区：空态提示 > 空输入历史（显示于联想位）> 联想 / 直达 / 拼音
+        when {
+            emptyNotice.isNotEmpty() -> EmptyNotice(emptyNotice)
+            query.isBlank() -> HistoryRow(history, onPickHistory, onClearHistory)
+            else -> {
+                // ↓ 直达的候选优先级（联想>直达>拼音）在此单点判定
+                val firstFocusRow = when {
+                    suggestions.isNotEmpty() -> 0
+                    nameHits.isNotEmpty() -> 1
+                    else -> 2
+                }
+                SuggestRow("联想", suggestions.map { it.name }, onPickSuggestion, firstFocus = if (firstFocusRow == 0) firstCandidateFocus else null)
+                SuggestRow("直达", nameHits.map { it.title }, onPickName, firstFocus = if (firstFocusRow == 1) firstCandidateFocus else null)
+                SuggestRow("拼音", pinyinCandidates, onPickPinyin, firstFocus = if (firstFocusRow == 2) firstCandidateFocus else null)
             }
-        } else {
-            SuggestRow(
-                "联想", suggestions.map { it.name }, onPickSuggestion,
-                firstFocus = if (suggestions.isNotEmpty()) firstCandidateFocus else null,
-            )
-            SuggestRow(
-                "直达", nameHits.map { it.title }, onPickName,
-                firstFocus = if (suggestions.isEmpty() && nameHits.isNotEmpty()) firstCandidateFocus else null,
-            )
-            SuggestRow(
-                "拼音", pinyinCandidates, onPickPinyin,
-                firstFocus = if (suggestions.isEmpty() && nameHits.isEmpty() && pinyinCandidates.isNotEmpty()) firstCandidateFocus else null,
-            )
         }
         Keyboard(
             pinyinMode = pinyinMode,
@@ -486,7 +482,7 @@ private fun ResultGrid(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(dramas, key = { it.seriesId }) { d ->
-                    val (_, season, _, _) = HongguoWeb.seasonOf(d.title)
+                    val season = HongguoWeb.seasonOf(d.title).season
                     PosterCard(
                         title = d.title,
                         badge = d.episodeCnt.ifEmpty { d.remark }.let { if (it.isNotEmpty() && !it.endsWith("集")) "${it}集" else it },
