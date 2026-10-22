@@ -21,7 +21,16 @@ data class WatchEntry(
     val positionMs: Long,
     val durationMs: Long,
     val updatedAt: Long,
-)
+) {
+    /** 卡片角标（SPEC §3.5）：第 N/M 集；总集数未知时只显示第 N 集。 */
+    val episodeBadge: String
+        get() = if (episodeCount > 0) "第${episode}/${episodeCount}集" else "第${episode}集"
+
+    /** 底缘 3dp 进度条比例（DESIGN §6）；时长无效时 null 不画。 */
+    val progressFraction: Float?
+        get() = if (durationMs <= 0) null
+        else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+}
 
 /** 观看历史（DataStore，SPEC §7）：播放每 5s + 退出写入；历史页/继续观看行读取。 */
 class WatchStore(private val context: Context) {

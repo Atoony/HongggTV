@@ -87,7 +87,9 @@ fun AppRoot() {
     val watchStore = remember { com.hgtv.app.data.WatchStore(context) }
     val playerSettings = remember { com.hgtv.app.data.PlayerSettingsStore(context) }
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO) }
-    val history by watchStore.entries.collectAsState(initial = emptyList())
+    // null = DataStore 首读未完成（首页首拉 filter_ids 依赖已看列表就绪）
+    val historyState by watchStore.entries.collectAsState(initial = null as List<com.hgtv.app.data.WatchEntry>?)
+    val history = historyState ?: emptyList<com.hgtv.app.data.WatchEntry>()
 
     // 详情数据加载（缓存于 AppRoot，播放退出回详情不重拉）
     LaunchedEffect(detailSeriesId) {
@@ -147,8 +149,12 @@ fun AppRoot() {
                 NavDest.HOME -> HomePage(
                     feed = feed,
                     history = history,
+                    historyReady = historyState != null,
+                    // 详情/播放覆盖层打开时首页不抢焦点（继续观看首卡落位会打断播放器按键）
+                    active = detailSeriesId == null && playEpisode == null,
                     onOpenDetail = { detailSeriesId = it },
                     onResume = { entry -> openDetail(entry.seriesId, entry) },
+                    onOpenHistory = { current = NavDest.HISTORY },
                 )
                 NavDest.SEARCH -> SearchPage(
                     web = web,
@@ -156,6 +162,7 @@ fun AppRoot() {
                 )
                 NavDest.HISTORY -> HistoryPage(
                     history = history,
+                    historyReady = historyState != null,
                     onResume = { entry -> openDetail(entry.seriesId, entry) },
                     onClear = { scope.launch { watchStore.clear() } },
                 )
