@@ -49,6 +49,7 @@ import com.hgtv.app.ui.theme.OnBg
 import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.PosterPlaceholder
 import com.hgtv.app.ui.theme.Primary
+import com.hgtv.app.ui.theme.SeasonGold
 import com.hgtv.app.ui.theme.Surface
 
 // wayfinder 票 04 验证过的样本剧（调试入口，保留在推荐行首）
@@ -201,9 +202,9 @@ private fun RowHint(text: String) {
     Text(text, fontSize = 14.sp, color = Dim)
 }
 
-/** 海报卡：2:3 海报 + 底部标题 + 左上角徽标。 */
+/** 海报卡：2:3 海报 + 底部标题 + 左上角徽标 + 左下季号金标（DESIGN §2.4/§6）。 */
 @Composable
-fun PosterCard(title: String, badge: String, cover: String, onClick: () -> Unit) {
+fun PosterCard(title: String, badge: String, cover: String, onClick: () -> Unit, seasonBadge: String = "") {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, tween(120), label = "poster")
@@ -237,6 +238,18 @@ fun PosterCard(title: String, badge: String, cover: String, onClick: () -> Unit)
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 ) {
                     Text(badge, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                }
+            }
+            if (seasonBadge.isNotEmpty()) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0x99000000))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(seasonBadge, color = SeasonGold, fontSize = 11.sp, maxLines = 1)
                 }
             }
             if (focused) {

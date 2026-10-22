@@ -43,6 +43,25 @@ class HongguoWeb(
         private const val SEASON_BUDGET_MS = 25_000L
         private const val NAME_INDEX_COUNT = 50
 
+
+        /** 联想响应解析：word_type 白名单过滤（SPEC §6.1）+ 同名去重 + count 截断；兼容 data 包裹结构。 */
+        internal fun parseSuggestions(json: String, count: Int): List<Suggestion> {
+            val root = JsonParser.parse(json) as? Map<String, Any?> ?: return emptyList()
+            val records = JsonParser.arr(root["suggest_list"]) ?: JsonParser.arr(JsonParser.obj(root["data"])?.get("suggest_list"))
+                ?: return emptyList()
+            val out = ArrayList<Suggestion>()
+            val seen = HashSet<String>()
+            for (row in records) {
+                val m = JsonParser.obj(row) ?: continue
+                val name = JsonParser.str(m, "name")
+                if (name.isEmpty() || !seen.add(name.lowercase())) continue
+                val type = JsonParser.str(m, "word_type").takeIf { WORD_TYPE_WHITELIST.contains(it) } ?: continue
+                out.add(Suggestion(name, type))
+                if (out.size >= count) break
+            }
+            return out
+        }
+
         /** 归一化比较文本：去空白/标点 + 小写（等价 Go hongguoSearchText） */
         internal fun searchText(text: String): String {
             val nfkc = Normalizer.normalize(text, Normalizer.Form.NFKC)
@@ -149,20 +168,7 @@ class HongguoWeb(
         val url = "$baseURL/incent_resource/suggestion?app_id=8662&query=${goEscapeQuery(q)}&count=$count"
         val (status, body) = httpGet(url, "$baseURL/")
         if (status != 200 || body.isEmpty()) return emptyList()
-        val root = JsonParser.parse(String(body, Charsets.UTF_8)) as? Map<String, Any?> ?: return emptyList()
-        val records = JsonParser.arr(root["suggest_list"]) ?: JsonParser.arr(JsonParser.obj(root["data"])?.get("suggest_list"))
-            ?: return emptyList()
-        val out = ArrayList<Suggestion>()
-        val seen = HashSet<String>()
-        for (row in records) {
-            val m = JsonParser.obj(row) ?: continue
-            val name = JsonParser.str(m, "name")
-            if (name.isEmpty() || !seen.add(name.lowercase())) continue
-            val type = JsonParser.str(m, "word_type").takeIf { WORD_TYPE_WHITELIST.contains(it) } ?: ""
-            out.add(Suggestion(name, type))
-            if (out.size >= count) break
-        }
-        return out
+        return parseSuggestions(String(body, Charsets.UTF_8), count)
     }
 
     // ---------- 名称索引（搜索结果增强 + 缺季补全查询） ----------
@@ -269,7 +275,11 @@ class HongguoWeb(
         }
     }
 
-    private suspend fun completeSeasons(keyword: String, dramas: MutableList<WebDrama>): Boolean {
+    internal suspend fun completeSeasons(
+        keyword: String,
+        dramas: MutableList<WebDrama>,
+        fetch: suspend (String) -> List<WebDrama> = { nameIndex(it) },
+    ): Boolean {
         if (seasonOf(keyword).season > 0) return false
         val query = searchText(keyword)
         val groups = ArrayList<Series>()
@@ -296,7 +306,7 @@ class HongguoWeb(
                 val next = g.nextQuery(attempted) ?: break
                 attempted.add(next)
                 requests++
-                val names = runCatching { nameIndex(next) }.getOrDefault(emptyList())
+                val names = runCatching { fetch(next) }.getOrDefault(emptyList())
                 val matches = names.filter { g.add(it) }
                 if (matches.isNotEmpty()) mergeDramas(dramas, matches)
             }
@@ -507,22 +517,29 @@ class HongguoWeb(
         }
     }
 
-    /** 同系列（base 相同 + unit 相同）按季号升序相邻 */
-    private fun sortSeasonsAdjacent(list: List<WebDrama>, queryNorm: String): List<WebDrama> {
+    /** 同系列（base 相同 + unit 相同）按季号升序相邻：首个成员位置为锚，整组按季号升序吐出。 */
+    internal fun sortSeasonsAdjacent(list: List<WebDrama>, queryNorm: String): List<WebDrama> {
         data class Keyed(val drama: WebDrama, val base: String, val season: Int, val unit: String)
         val keyed = list.map { d ->
             val (base, season, unit, _) = seasonOf(d.title)
             val s = if (season == 0 && searchText(d.title) == queryNorm) 1 else season
             Keyed(d, searchText(base), s, unit)
         }
-        return keyed.sortedWith { a, b ->
-            val aSeries = a.season > 0
-            val bSeries = b.season > 0
-            when {
-                aSeries && bSeries && a.unit == b.unit && a.base == b.base -> a.season.compareTo(b.season)
-                else -> 0 // 稳定排序保持原位
+        val groupKey = { k: Keyed -> k.base to k.unit }
+        val counts = HashMap<Pair<String, String>, Int>()
+        keyed.filter { it.season > 0 }.forEach { counts.merge(groupKey(it), 1, Int::plus) }
+        val emitted = HashSet<Pair<String, String>>()
+        val out = ArrayList<WebDrama>(keyed.size)
+        for (k in keyed) {
+            if (k.season > 0 && (counts[groupKey(k)] ?: 0) >= 2) {
+                val gk = groupKey(k)
+                if (!emitted.add(gk)) continue
+                out.addAll(keyed.filter { it.season > 0 && groupKey(it) == gk }.sortedBy { it.season }.map { it.drama })
+            } else {
+                out.add(k.drama)
             }
-        }.map { it.drama }
+        }
+        return out
     }
 
     data class Tuple4(val base: String, val season: Int, val unit: String, val label: String)
