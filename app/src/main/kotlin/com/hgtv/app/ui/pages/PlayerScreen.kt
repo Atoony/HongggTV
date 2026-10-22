@@ -143,9 +143,17 @@ fun PlayerScreen(
         val webLine = uri.contains("hongguoduanju.com")
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("com.phoenix.read/73532")
+            // 票09 第 8 项（minireel source_config:98-107）：Referer/Origin 同源 + identity
+            // 禁透明 gzip（Range/CDN 友好）
             .setDefaultRequestProperties(
-                if (webLine) mapOf("Referer" to "https://hongguoduanju.com/")
-                else mapOf("Referer" to "https://novel.snssdk.com/")
+                mapOf("Accept-Encoding" to "identity") +
+                    if (webLine) mapOf(
+                        "Referer" to "https://hongguoduanju.com/",
+                        "Origin" to "https://hongguoduanju.com",
+                    ) else mapOf(
+                        "Referer" to "https://novel.snssdk.com/",
+                        "Origin" to "https://novel.snssdk.com",
+                    )
             )
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(8_000)

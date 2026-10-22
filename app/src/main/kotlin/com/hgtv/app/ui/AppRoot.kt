@@ -79,10 +79,11 @@ fun AppRoot() {
     var playResumeMs by remember { mutableStateOf(0L) }
     var autoResume by remember { mutableStateOf<com.hgtv.app.data.WatchEntry?>(null) } // 历史/首页续播：加载完详情直接进播放
     val contentRequester = remember { FocusRequester() }
-    val api = remember { com.hgtv.app.net.HongguoApi() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // 票09 第 7 项：identity 每次安装生成后持久化（filesDir/hg_identity.txt），重启不换
+    val api = remember { com.hgtv.app.net.HongguoApi(com.hgtv.app.net.HongguoDevice.loadOrNew(context.filesDir)) }
     val feed = remember { com.hgtv.app.net.HongguoFeed(api) }
     val web = remember { com.hgtv.app.net.HongguoWeb() }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val watchStore = remember { com.hgtv.app.data.WatchStore(context) }
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO) }
     val history by watchStore.entries.collectAsState(initial = emptyList())

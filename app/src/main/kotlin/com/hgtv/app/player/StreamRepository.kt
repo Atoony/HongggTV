@@ -31,7 +31,8 @@ class StreamException(val code: String, message: String) : Exception("[$code] $m
 }
 
 /**
- * 取流仓库：SPEC §5.2 错误链第一段——同链路重试 2 次（退避 1s/3s）→ 抛 StreamException。
+ * 取流仓库：SPEC §5.2 错误链第一段——同链路重试 2 次（退避 450ms×attempt，票09 第 5 项：
+ * 高频重试本身是风控信号，1s/3s 偏激进）→ 抛 StreamException。
  * 响应内多线路（main_url + backup_url）由 PlayerController 切换。
  */
 class StreamRepository(private val api: HongguoApi) {
@@ -45,10 +46,18 @@ class StreamRepository(private val api: HongguoApi) {
             urls = listOf("https://hongguoduanju.com/video/public/$videoId/360p.mp4"),
             cencKey = null,
         )
+
+        /** 票09 第 5 项：仅 408/429/≥500 与网络层异常可重试；CF 挑战 / 3xx / 其他 4xx / 解析失败不重试。 */
+        fun retriable(e: Exception): Boolean = when (e) {
+            is HongguoApi.ChallengeException -> false
+            is HongguoApi.ApiException ->
+                e.httpStatus?.let { it == 408 || it == 429 || it >= 500 } ?: false
+            else -> true // 网络层异常（连接超时/中断）
+        }
     }
 
     suspend fun fetchStreamsWithRetry(videoId: String): List<HongguoApi.StreamOption> {
-        val backoffs = longArrayOf(0, 1000, 3000)
+        val backoffs = longArrayOf(0, 450, 900) // 450ms × attempt（票09 第 5 项）
         var lastError: Exception? = null
         for (waitMs in backoffs) {
             if (waitMs > 0) delay(waitMs)
@@ -63,6 +72,7 @@ class StreamRepository(private val api: HongguoApi) {
                 } else {
                     lastError = StreamException.fetch(e.message ?: "取流失败")
                 }
+                if (!retriable(e)) break // 200+0 静默拒绝：立即记数切兜底，不再连打
             } catch (e: Exception) {
                 lastError = StreamException.fetch("网络错误: ${e.message}")
             }

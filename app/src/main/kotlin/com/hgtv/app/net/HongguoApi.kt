@@ -1,6 +1,7 @@
 package com.hgtv.app.net
 
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import javax.crypto.Cipher
@@ -20,6 +21,31 @@ class HongguoApi(
 
         val NUMERIC_ID = Regex("^\\d{10,25}$")
         private val QUALITY_NUMBER = Regex("\\d+")
+
+        /** 响应体流式读取上限（票09 第 6 项）：防假 Content-Length 内存炸弹。 */
+        internal const val MAX_BODY_BYTES = 20 * 1024 * 1024
+
+        /** CF 挑战页特征（票09 第 4 项）：cf-chl- 头 / _cf_chl_opt JS 变量 / Just a moment 标题。 */
+        fun isCfChallenge(body: ByteArray): Boolean {
+            if (body.isEmpty()) return false
+            val head = String(body, 0, minOf(body.size, 4096), Charsets.ISO_8859_1)
+            return head.contains("cf-chl-", ignoreCase = true) ||
+                head.contains("cf_chl", ignoreCase = true) ||
+                head.contains("<title>just a moment", ignoreCase = true)
+        }
+
+        /** 流式读取并限上限，超限即中止（票09 第 6 项）。 */
+        internal fun readBounded(input: InputStream, limit: Int): ByteArray {
+            val buffer = ByteArrayOutputStream(64 * 1024)
+            val chunk = ByteArray(16 * 1024)
+            while (true) {
+                val n = input.read(chunk)
+                if (n < 0) break
+                if (buffer.size() + n > limit) throw ApiException("响应体超过 ${limit / (1024 * 1024)}MB 上限")
+                buffer.write(chunk, 0, n)
+            }
+            return buffer.toByteArray()
+        }
 
         fun decodeBase64(value: String): ByteArray? {
             val v = value.trim()
@@ -113,7 +139,11 @@ class HongguoApi(
         val cencKey: ByteArray?,
     )
 
-    class ApiException(message: String) : Exception(message)
+    /** httpStatus：产生该错误的 HTTP 状态码；null = 非 HTTP 层错误（解析失败等）。 */
+    open class ApiException(message: String, val httpStatus: Int? = null) : Exception(message)
+
+    /** CF 挑战页：要求浏览器验证，重试无益（票09 第 4 项，minireel app_http_client:111）。 */
+    class ChallengeException(message: String, httpStatus: Int) : ApiException(message, httpStatus)
 
     // ---------- 请求 ----------
 
@@ -156,6 +186,9 @@ class HongguoApi(
 
         val conn = URL("$baseURL$path?$rawQuery").openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
+        // 票09 第 1 项：签名 POST 禁跟随重定向——302 后新 location 不带签名头必挂；
+        // HttpURLConnection 默认自动跟随，此处显式关闭（须重建 URI 重签，而非盲跟）。
+        conn.instanceFollowRedirects = false
         conn.connectTimeout = 8_000 // 连接快速失败（主机不可达时缩短重试链总时长）
         conn.readTimeout = timeoutMs
         conn.doOutput = bodyBytes != null
@@ -164,6 +197,8 @@ class HongguoApi(
         conn.setRequestProperty("X-XS-From-Web", "0")
         conn.setRequestProperty("Sdk-Version", "2")
         if (bodyBytes != null) conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        // 票09 第 9 项：Ladon/Argus 为简化版，minireel 证实仅 Gorgon/Khronos/SS-STUB/SS-Req-Ticket
+        // 四件套即可通过 App 链——非必需，勿作签名通过的归因；保留仅为兼容消融探针。
         if (withLadonArgus && !skipLadonArgus) {
             conn.setRequestProperty("X-Ladon", HongguoSign.ladon(ts))
             conn.setRequestProperty("X-Argus", HongguoSign.argus(ts))
@@ -177,12 +212,20 @@ class HongguoApi(
             conn.outputStream.use { it.write(bodyBytes) }
         }
         val status = conn.responseCode
-        val content = (if (status in 200..399) conn.inputStream else conn.errorStream)?.use { it.readBytes() }
-            ?: ByteArray(0)
+        // 票09 第 6 项：流式读取 + 20MB 上限（防假 Content-Length）；3xx 不读流（禁跟随后无意义）
+        val content = (if (status in 200..299) conn.inputStream else conn.errorStream)
+            ?.use { readBounded(it, MAX_BODY_BYTES) } ?: ByteArray(0)
         val headers = conn.headerFields.entries
             .filter { it.key != null }
             .associate { (k, v) -> k to v }
         conn.disconnect()
+        // 票09 第 1 项：3xx 签名已失效，明确报错不盲跟（重试层按非 408/429/5xx 不重试）
+        if (status in 300..399) {
+            val location = headers["Location"]?.firstOrNull() ?: ""
+            throw ApiException("签名请求被重定向 HTTP $status → $location", status)
+        }
+        // 票09 第 4 项：CF 挑战页 → 明确错误，不进重试
+        if (isCfChallenge(content)) throw ChallengeException("CF 浏览器验证（挑战页），不重试", status)
         Triple(status, headers, content)
     }
 
@@ -194,7 +237,7 @@ class HongguoApi(
             JVal.obj("series_id" to JVal.str(seriesId)),
         )
         if (status != 200 || body.isEmpty()) {
-            throw ApiException("详情请求失败 HTTP $status ${body.size}B")
+            throw ApiException("详情请求失败 HTTP $status ${body.size}B", status)
         }
         val root = JsonParser.parse(String(body, Charsets.UTF_8))
             as? Map<String, Any?> ?: throw ApiException("详情响应非 JSON")
@@ -288,7 +331,7 @@ class HongguoApi(
         )
         val (status, _, content) = request("/novel/player/video_model/v1/", body)
         if (status != 200 || content.isEmpty()) {
-            throw ApiException("取流请求失败 HTTP $status ${content.size}B")
+            throw ApiException("取流请求失败 HTTP $status ${content.size}B", status)
         }
         val root = JsonParser.parse(String(content, Charsets.UTF_8)) as? Map<String, Any?>
             ?: throw ApiException("取流响应非 JSON")
@@ -361,7 +404,8 @@ class HongguoApi(
         return choices.map { it.option }
     }
 
-    private fun mediaAddresses(info: Map<String, Any?>): List<String> {
+    /** internal：票09 第 9 项防呆测试直测（服务回显 base64 请求为 url = 判失败、丢弃）。 */
+    internal fun mediaAddresses(info: Map<String, Any?>): List<String> {
         val out = ArrayList<String>()
         val seen = HashSet<String>()
         fun add(value: Any?) {
