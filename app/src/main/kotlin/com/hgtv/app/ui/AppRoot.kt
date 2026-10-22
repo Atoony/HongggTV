@@ -85,6 +85,7 @@ fun AppRoot() {
     val feed = remember { com.hgtv.app.net.HongguoFeed(api) }
     val web = remember { com.hgtv.app.net.HongguoWeb() }
     val watchStore = remember { com.hgtv.app.data.WatchStore(context) }
+    val playerSettings = remember { com.hgtv.app.data.PlayerSettingsStore(context) }
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO) }
     val history by watchStore.entries.collectAsState(initial = emptyList())
 
@@ -204,6 +205,7 @@ fun AppRoot() {
                 freeEpisodeCnt = data.freeEpisodeCnt,
                 api = api,
                 watchStore = watchStore,
+                settings = playerSettings,
                 onExit = {
                     playEpisode = null
                     playResumeMs = 0L

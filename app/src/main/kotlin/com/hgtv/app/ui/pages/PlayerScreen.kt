@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -62,6 +63,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.hgtv.app.data.PlayerSettingsStore
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
 import com.hgtv.app.net.HongguoApi
@@ -108,6 +110,7 @@ fun PlayerScreen(
     freeEpisodeCnt: Int = Int.MAX_VALUE,
     api: HongguoApi,
     watchStore: WatchStore,
+    settings: PlayerSettingsStore,
     onExit: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -124,9 +127,15 @@ fun PlayerScreen(
     var isPlaying by remember { mutableStateOf(true) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var reconnects by remember { mutableIntStateOf(0) }
-    var autoNext by rememberSaveable { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+    // 自动连播开关：DataStore 持久化（票05），断网/重启后仍生效
+    val autoNext by settings.autoNext.collectAsState(initial = PlayerSettingsStore.AUTO_NEXT_DEFAULT)
     var preferredQuality by rememberSaveable { mutableIntStateOf(1080) }
     var loadToken by remember { mutableIntStateOf(0) } // 换集/重试信号
+    // 断点续播：最近已知播放位置（5s 快照 + 出错时捕获），错误页重试从这续播而非 startPositionMs
+    var resumeMs by remember { mutableLongStateOf(startPositionMs) }
+    var lastLoadedEpisode by remember { mutableIntStateOf(-1) } // -1 = 尚未装载过
+    var switchOsdPending by remember { mutableStateOf(false) } // 换集 READY 后把"正在切换…"换成"第N集"
 
     val stageFocus = remember { FocusRequester() }
     val pauseFocus = remember { FocusRequester() }
@@ -181,7 +190,12 @@ fun PlayerScreen(
     // 装载（初次 + 换集 + 错误重试统一走 loadToken/currentEpisode）
     LaunchedEffect(currentEpisode, loadToken) {
         val ep = episodes.firstOrNull { it.index == currentEpisode } ?: return@LaunchedEffect
-        osd = "第${ep.index}集"
+        val firstLoad = lastLoadedEpisode == -1
+        // 票05：换集/重试期间 OSD"正在切换…"，READY 后换成"第N集"；初次进播放器直接报集号
+        osd = if (firstLoad) "第${ep.index}集" else "正在切换…"
+        switchOsdPending = !firstLoad
+        val startAt = resolveStartMs(currentEpisode, lastLoadedEpisode, startEpisode, startPositionMs, resumeMs)
+        lastLoadedEpisode = currentEpisode
         reconnects = 0
         urlIndex = 0
         // 网页兜底详情只带免费集直链：非免费集直接走错误页，不空跑取流重试
@@ -194,7 +208,7 @@ fun PlayerScreen(
         error = null
         try {
             options = streamRepo.fetchStreamsWithRetry(ep.videoId)
-            prepareAt(if (ep.index == startEpisode) startPositionMs else 0L)
+            prepareAt(startAt)
         } catch (e: StreamException) {
             error = PlayError(e.code, e.message ?: "取流失败")
         } catch (e: Exception) {
@@ -223,6 +237,8 @@ fun PlayerScreen(
                     urlIndex = 0
                     prepareAt(player.currentPosition)
                 } else {
+                    // 进错误页前保住断点：重试从这续播（票05 断点不丢）
+                    resumeMs = player.currentPosition
                     error = PlayError("E-2001", "播放中断：${err.errorCodeName}")
                 }
             }
@@ -232,6 +248,10 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     durationMs = player.duration
                     reconnects = 0
+                    if (switchOsdPending) {
+                        switchOsdPending = false
+                        osd = "第${currentEpisode}集"
+                    }
                 }
                 if (state == Player.STATE_ENDED && autoNext && currentEpisode < episodeCount) {
                     currentEpisode += 1
@@ -265,6 +285,7 @@ fun PlayerScreen(
         while (true) {
             delay(SAVE_INTERVAL_MS)
             if (player.duration > 0 && player.currentPosition > 0) {
+                resumeMs = player.currentPosition
                 watchStore.upsert(snapshot())
             }
         }
@@ -388,7 +409,7 @@ fun PlayerScreen(
                     }
                     overlay = OverlayState.NONE
                 },
-                onAutoNext = { autoNext = it },
+                onAutoNext = { v -> scope.launch { settings.setAutoNext(v) } },
                 onClose = { overlay = OverlayState.NONE },
             )
         }
@@ -428,11 +449,10 @@ private fun BoxScope.ControlsBar(
 ) {
     var hideTick by remember { mutableIntStateOf(0) }
     var pos by remember { mutableLongStateOf(0L) }
+    // 5s 无操作收起（票05：呼出即开始计时，任意遥控键/点击重置）
     LaunchedEffect(hideTick) {
-        if (hideTick > 0) {
-            delay(CONTROLS_AUTO_HIDE_MS)
-            onDismiss()
-        }
+        delay(CONTROLS_AUTO_HIDE_MS)
+        onDismiss()
     }
     // 进度实时刷新（500ms 轮询，控制条可见期间）
     LaunchedEffect(Unit) {
@@ -446,6 +466,20 @@ private fun BoxScope.ControlsBar(
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .background(Scrim.copy(alpha = 0.92f))
+            .onPreviewKeyEvent { e ->
+                // ↑ 收起选项栏（SPEC §3.4 态2）；其余方向/OK 键重置 5s 收起计时
+                when (e.key.keyCode.toInt()) {
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        onDismiss(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+                    KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
+                    -> {
+                        hideTick++; false
+                    }
+                    else -> false
+                }
+            }
             .padding(horizontal = 48.dp, vertical = 20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -476,6 +510,24 @@ private fun BoxScope.ControlsBar(
             ControlButton("设置", onClick = { onSettings(); hideTick++ })
         }
     }
+}
+
+/**
+ * 装载续播位置决策（票05 断点不丢）：
+ * - 同集重试（错误页"重试"/loadToken++）→ 从最近播放位置续播；
+ * - 首次装载且为起始集 → 从入参断点（历史续播）起播；
+ * - 换集（含浮层选回起始集）→ 从头播。
+ */
+internal fun resolveStartMs(
+    currentEpisode: Int,
+    lastLoadedEpisode: Int,
+    startEpisode: Int,
+    startPositionMs: Long,
+    resumeMs: Long,
+): Long = when {
+    currentEpisode == lastLoadedEpisode -> resumeMs
+    lastLoadedEpisode == -1 && currentEpisode == startEpisode -> startPositionMs
+    else -> 0L
 }
 
 private fun formatMs(ms: Long): String {
