@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,6 +69,9 @@ fun HistoryPage(
             }
             history.isEmpty() -> HistoryEmpty()
             else -> {
+                // 列表懒加载预取（SPEC §8）：焦点卡后 ahead 张海报预热
+                val prefetcher = com.hgtv.app.ui.rememberCoverPrefetcher()
+                prefetcher.update(history.map { it.cover })
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -76,7 +79,7 @@ fun HistoryPage(
                     contentPadding = PaddingValues(bottom = 24.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    items(history, key = { it.seriesId }) { entry ->
+                    itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
                         PosterCard(
                             title = entry.title,
                             badge = entry.episodeBadge,
@@ -84,6 +87,7 @@ fun HistoryPage(
                             modifier = Modifier.fillMaxWidth(),
                             progress = entry.progressFraction,
                             focusedScale = 1.06f, // DESIGN §3：网格卡片可到 1.06x
+                            onFocused = { prefetcher.onFocus(index) },
                             onClick = { onResume(entry) },
                         )
                     }

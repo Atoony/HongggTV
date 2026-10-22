@@ -1,7 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// 发布签名配置（票08）：keystore/hgtv-release.properties 不入库，四键齐才启用 hgRelease 签名
+val hgKeystoreProps = Properties().apply {
+    val f = rootProject.file("keystore/hgtv-release.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val hgStoreFile: String? = hgKeystoreProps.getProperty("storeFile")
+val hgStorePassword: String? = hgKeystoreProps.getProperty("storePassword")
+val hgKeyAlias: String? = hgKeystoreProps.getProperty("keyAlias")
+val hgKeyPassword: String? = hgKeystoreProps.getProperty("keyPassword")
 
 android {
     namespace = "com.hgtv.app"
@@ -11,12 +23,25 @@ android {
         applicationId = "com.hgtv.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 100
+        versionName = "1.0.0"
     }
 
     buildTypes {
         release {
+            // 发布签名读 keystore/hgtv-release.properties（gitignore，生成方式见 scripts/README-release.md）；
+            // 未配置时回落 debug 签名，保证 release APK 始终可安装（票08：GitHub Releases 侧载通道）
+            signingConfig = if (hgStoreFile != null && hgStorePassword != null && hgKeyAlias != null && hgKeyPassword != null) {
+                signingConfigs.create("hgRelease") {
+                    storeFile = rootProject.file(hgStoreFile!!)
+                    storePassword = hgStorePassword
+                    keyAlias = hgKeyAlias
+                    keyPassword = hgKeyPassword
+                }
+            } else {
+                logger.warn("hgtv: 未找到 keystore/hgtv-release.properties，release 构建将使用 debug 签名")
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

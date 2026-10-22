@@ -1,7 +1,6 @@
 package com.hgtv.app.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -90,6 +89,19 @@ fun AppRoot() {
     // null = DataStore 首读未完成（首页首拉 filter_ids 依赖已看列表就绪）
     val historyState by watchStore.entries.collectAsState(initial = null as List<com.hgtv.app.data.WatchEntry>?)
     val history = historyState ?: emptyList<com.hgtv.app.data.WatchEntry>()
+
+    // SPEC §4 返回四级链末端：无覆盖层时双击返回退出（1.5s 窗口，首按提示）。
+    // 注册在本层最前 = 最低优先级，详情/播放/搜索结果的 BackHandler 先消费。
+    var lastBackAt by remember { mutableStateOf(0L) }
+    BackHandler(enabled = detailSeriesId == null && playEpisode == null) {
+        val now = System.currentTimeMillis()
+        if (BackExit.isExit(now, lastBackAt)) {
+            (context as? android.app.Activity)?.finish()
+        } else {
+            lastBackAt = now
+            android.widget.Toast.makeText(context, "再按一次返回键退出", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // 详情数据加载（缓存于 AppRoot，播放退出回详情不重拉）
     LaunchedEffect(detailSeriesId) {
@@ -252,7 +264,7 @@ private fun SidebarItem(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "scale")
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     // 选中框跟随焦点（TV 惯例）；当前页在未聚焦时以左侧竖条标记
     val highlighted = focused || selected
@@ -302,7 +314,7 @@ private fun SidebarItem(
 fun PlaceholderCard(text: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "card")
+    val scale = focusScale(focused)
     Box(
         modifier
             .size(width = 128.dp, height = 224.dp)

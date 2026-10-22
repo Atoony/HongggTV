@@ -21,8 +21,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,6 +80,12 @@ fun HomePage(
     var loadingMore by remember { mutableStateOf(false) }
     val sessionId = remember { (1000000000000000000L..8999999999999999999L).random().toString() }
 
+    // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
+    val resumePrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
+    val rankPrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
+    val feedPrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
+    resumePrefetch.update(history.map { it.cover })
+
     // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落推荐首卡；每会话仅一次
     val resumeFirstFocus = remember { FocusRequester() }
     val recommendFirstFocus = remember { FocusRequester() }
@@ -125,6 +129,7 @@ fun HomePage(
                             cover = entry.cover,
                             progress = entry.progressFraction,
                             focusRequester = if (index == 0) resumeFirstFocus else null,
+                            onFocused = { resumePrefetch.onFocus(index) },
                             onClick = { onResume(entry) },
                         )
                     }
@@ -138,11 +143,14 @@ fun HomePage(
                 rankItems == null && rankError == null -> RowHint("加载中…")
                 rankError != null -> RowHint("热播榜加载失败：$rankError")
                 else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(rankItems.orEmpty(), key = { "rank-" + it.seriesId }) { item ->
+                    val rankList = rankItems.orEmpty()
+                    rankPrefetch.update(rankList.map { it.cover })
+                    itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
                         PosterCard(
                             title = item.title,
                             badge = "NO.${item.rank}",
                             cover = item.cover,
+                            onFocused = { rankPrefetch.onFocus(index) },
                             onClick = { onOpenDetail(item.seriesId) },
                         )
                     }
@@ -172,6 +180,7 @@ fun HomePage(
                             }.trim(),
                             cover = item.cover,
                             focusRequester = if (index == 0) recommendFirstFocus else null,
+                            onFocused = { feedPrefetch.onFocus(index) },
                             onClick = { onOpenDetail(item.seriesId) },
                         )
                     }
@@ -250,11 +259,15 @@ fun PosterCard(
     focusedScale: Float = 1.04f,
     seasonBadge: String = "",
     focusRequester: FocusRequester? = null,
+    onFocused: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) focusedScale else 1f, tween(120), label = "poster")
+    val scale = com.hgtv.app.ui.focusScale(focused, focusedScale)
+    LaunchedEffect(focused) {
+        if (focused) onFocused?.invoke()
+    }
     Column(
         modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
@@ -271,7 +284,7 @@ fun PosterCard(
         ) {
             if (cover.isNotEmpty()) {
                 AsyncImage(
-                    model = cover,
+                    model = com.hgtv.app.ui.rememberCoverRequest(cover),
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().background(PosterPlaceholder),
@@ -341,7 +354,7 @@ private fun LoadMoreCard(loading: Boolean, onClick: () -> Unit) {
 private fun ActionCard(text: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "action")
+    val scale = com.hgtv.app.ui.focusScale(focused)
     Box(
         Modifier
             .width(150.dp)

@@ -22,7 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -474,6 +474,9 @@ private fun ResultGrid(
                 Text("没有找到「$word」相关短剧", color = Dim, fontSize = 16.sp)
             }
         } else if (!loading) {
+            // 列表懒加载预取（SPEC §8）：焦点卡后 ahead 张海报预热
+            val prefetcher = com.hgtv.app.ui.rememberCoverPrefetcher()
+            prefetcher.update(dramas.map { it.cover })
             LazyVerticalGrid(
                 columns = GridCells.Fixed(6),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -481,12 +484,13 @@ private fun ResultGrid(
                 contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(dramas, key = { it.seriesId }) { d ->
+                itemsIndexed(dramas, key = { _, it -> it.seriesId }) { index, d ->
                     val season = HongguoWeb.seasonOf(d.title).season
                     PosterCard(
                         title = d.title,
                         badge = d.episodeCnt.ifEmpty { d.remark }.let { if (it.isNotEmpty() && !it.endsWith("集")) "${it}集" else it },
                         cover = d.cover,
+                        onFocused = { prefetcher.onFocus(index) },
                         onClick = { onOpenDetail(d.seriesId) },
                         seasonBadge = if (season > 0) "第${season}季" else "",
                     )

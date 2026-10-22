@@ -1,8 +1,6 @@
 package com.hgtv.app.ui.pages
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -105,7 +103,7 @@ private fun DetailContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AsyncImage(
-                model = detail.cover,
+                model = com.hgtv.app.ui.rememberCoverRequest(detail.cover),
                 contentDescription = detail.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -189,7 +187,7 @@ private enum class ChipState { WATCHED, CURRENT, NORMAL }
 private fun ResumeButton(episode: Int, focusRequester: FocusRequester, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "resume")
+    val scale = com.hgtv.app.ui.focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     Box(
         Modifier
@@ -230,7 +228,7 @@ private fun EpisodeTab(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun EpisodeChip(index: Int, state: ChipState, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "chip")
+    val scale = com.hgtv.app.ui.focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (state) {
         ChipState.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)

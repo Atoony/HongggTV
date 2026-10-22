@@ -2,8 +2,6 @@ package com.hgtv.app.ui.pages
 
 import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -542,7 +540,7 @@ private fun formatMs(ms: Long): String {
 private fun ControlButton(text: String, onClick: () -> Unit, focusRequester: FocusRequester? = null) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "ctrl")
+    val scale = com.hgtv.app.ui.focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     var m = Modifier
         .height(44.dp)
@@ -653,7 +651,7 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun ChipOverlay(index: Int, look: ChipLook, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.04f else 1f, tween(120), label = "epchip")
+    val scale = com.hgtv.app.ui.focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (look) {
         ChipLook.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)

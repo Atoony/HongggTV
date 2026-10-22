@@ -12,6 +12,7 @@
         android:required="false" />
 
     <application
+        android:name=".HgtvApp"
         android:allowBackup="true"
         android:banner="@drawable/app_banner"
         android:icon="@drawable/ic_launcher"

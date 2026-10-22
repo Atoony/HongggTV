@@ -10,6 +10,8 @@ local.properties
 *.keystore
 *.apk
 *.aab
+keystore/
+dist/
 
 # IDE
 .idea/
@@ -24,6 +26,9 @@ Thumbs.db
 
 # 设计与临时工作区（不进版本库）
 .scratch/
+
+# 交互式决策页（用户点选用，不进版本库）
+interaction/
 
 # 参考项目（不进本库）
 guoapp/
