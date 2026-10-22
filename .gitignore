@@ -27,3 +27,6 @@ Thumbs.db
 
 # 参考项目（不进本库）
 guoapp/
+
+# curl 下载残留（镜像站 cookie 文件）
+cj.txt
