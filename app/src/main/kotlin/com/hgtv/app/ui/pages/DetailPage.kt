@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.hgtv.app.net.HongguoApi
+import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -103,7 +105,7 @@ private fun DetailContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AsyncImage(
-                model = com.hgtv.app.ui.rememberCoverRequest(detail.cover),
+                model = rememberCoverRequest(detail.cover),
                 contentDescription = detail.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -187,7 +189,7 @@ private enum class ChipState { WATCHED, CURRENT, NORMAL }
 private fun ResumeButton(episode: Int, focusRequester: FocusRequester, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused)
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     Box(
         Modifier
@@ -228,7 +230,7 @@ private fun EpisodeTab(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun EpisodeChip(index: Int, state: ChipState, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused)
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (state) {
         ChipState.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)

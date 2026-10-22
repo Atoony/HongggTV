@@ -1,5 +1,7 @@
 package com.hgtv.app.ui
 
+import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -90,16 +92,17 @@ fun AppRoot() {
     val historyState by watchStore.entries.collectAsState(initial = null as List<com.hgtv.app.data.WatchEntry>?)
     val history = historyState ?: emptyList<com.hgtv.app.data.WatchEntry>()
 
-    // SPEC §4 返回四级链末端：无覆盖层时双击返回退出（1.5s 窗口，首按提示）。
+    // SPEC §4 返回四级链末端："首页双击退出"落地为顶级页通用（首页/搜索键盘态/历史——
+    // 否则这些页返回无出口）；无覆盖层时 1.5s 窗口双击退出，首按提示。
     // 注册在本层最前 = 最低优先级，详情/播放/搜索结果的 BackHandler 先消费。
     var lastBackAt by remember { mutableStateOf(0L) }
     BackHandler(enabled = detailSeriesId == null && playEpisode == null) {
         val now = System.currentTimeMillis()
         if (BackExit.isExit(now, lastBackAt)) {
-            (context as? android.app.Activity)?.finish()
+            (context as? Activity)?.finish()
         } else {
             lastBackAt = now
-            android.widget.Toast.makeText(context, "再按一次返回键退出", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "再按一次返回键退出", Toast.LENGTH_SHORT).show()
         }
     }
 

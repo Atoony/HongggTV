@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import com.hgtv.app.net.HongguoWeb
 import com.hgtv.app.net.Suggestion
 import com.hgtv.app.net.WebDrama
+import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.KeySurface
 import com.hgtv.app.ui.theme.KeySurfaceDim
@@ -475,8 +476,7 @@ private fun ResultGrid(
             }
         } else if (!loading) {
             // 列表懒加载预取（SPEC §8）：焦点卡后 ahead 张海报预热
-            val prefetcher = com.hgtv.app.ui.rememberCoverPrefetcher()
-            prefetcher.update(dramas.map { it.cover })
+            val prefetcher = rememberRowPrefetch(dramas.map { it.cover })
             LazyVerticalGrid(
                 columns = GridCells.Fixed(6),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),

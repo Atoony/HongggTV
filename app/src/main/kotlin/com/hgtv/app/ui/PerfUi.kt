@@ -3,6 +3,7 @@ package com.hgtv.app.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
@@ -31,13 +32,14 @@ fun focusScale(focused: Boolean, focusedScale: Float = 1.04f): Float {
 fun rememberCoverRequest(model: String): ImageRequest {
     val context = LocalContext.current
     val maxPx = DevicePerf.profile.coverMaxPx
-    return remember(model, maxPx) {
-        ImageRequest.Builder(context)
-            .data(model)
-            .apply { if (maxPx != null) size(maxPx) }
-            .build()
-    }
+    return remember(model, maxPx) { coverRequest(context, model, maxPx) }
 }
+
+private fun coverRequest(context: android.content.Context, url: String, maxPx: Int?): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(url)
+        .apply { if (maxPx != null) size(maxPx) }
+        .build()
 
 /** 应预取的下标区间：焦点卡之后 ahead 张（列表懒加载预取 2–4）。 */
 fun prefetchRange(index: Int, size: Int, ahead: Int): IntRange {
@@ -72,14 +74,15 @@ fun rememberCoverPrefetcher(): CoverPrefetcher {
     val maxPx = DevicePerf.profile.coverMaxPx
     return remember {
         CoverPrefetcher(ahead) { url ->
-            if (url.isNotEmpty()) {
-                loader.enqueue(
-                    ImageRequest.Builder(context)
-                        .data(url)
-                        .apply { if (maxPx != null) size(maxPx) }
-                        .build(),
-                )
-            }
+            if (url.isNotEmpty()) loader.enqueue(coverRequest(context, url, maxPx))
         }
     }
+}
+
+/** 行级预取接线：内部完成 update，杜绝"建了 onFocus 却忘了 update"（评审抓出的推荐行 no-op）。 */
+@Composable
+fun rememberRowPrefetch(covers: List<String>): CoverPrefetcher {
+    val prefetcher = rememberCoverPrefetcher()
+    SideEffect { prefetcher.update(covers) }
+    return prefetcher
 }

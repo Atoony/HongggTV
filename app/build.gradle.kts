@@ -33,7 +33,7 @@ android {
             // 未配置时回落 debug 签名，保证 release APK 始终可安装（票08：GitHub Releases 侧载通道）
             signingConfig = if (hgStoreFile != null && hgStorePassword != null && hgKeyAlias != null && hgKeyPassword != null) {
                 signingConfigs.create("hgRelease") {
-                    storeFile = rootProject.file(hgStoreFile!!)
+                    storeFile = rootProject.file(hgStoreFile)
                     storePassword = hgStorePassword
                     keyAlias = hgKeyAlias
                     keyPassword = hgKeyPassword

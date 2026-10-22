@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hgtv.app.data.WatchEntry
+import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.KeySurface
 import com.hgtv.app.ui.theme.OnBg
@@ -70,8 +71,7 @@ fun HistoryPage(
             history.isEmpty() -> HistoryEmpty()
             else -> {
                 // 列表懒加载预取（SPEC §8）：焦点卡后 ahead 张海报预热
-                val prefetcher = com.hgtv.app.ui.rememberCoverPrefetcher()
-                prefetcher.update(history.map { it.cover })
+                val prefetcher = rememberRowPrefetch(history.map { it.cover })
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),

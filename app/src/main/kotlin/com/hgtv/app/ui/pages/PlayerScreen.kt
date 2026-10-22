@@ -66,6 +66,7 @@ import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
 import com.hgtv.app.net.HongguoApi
 import com.hgtv.app.player.LocalClearKeyCallback
+import com.hgtv.app.ui.focusScale
 import com.hgtv.app.player.StreamException
 import com.hgtv.app.player.StreamRepository
 import com.hgtv.app.ui.theme.Bg
@@ -540,7 +541,7 @@ private fun formatMs(ms: Long): String {
 private fun ControlButton(text: String, onClick: () -> Unit, focusRequester: FocusRequester? = null) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused)
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     var m = Modifier
         .height(44.dp)
@@ -651,7 +652,7 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun ChipOverlay(index: Int, look: ChipLook, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused)
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (look) {
         ChipLook.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)

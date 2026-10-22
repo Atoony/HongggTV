@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
@@ -45,6 +44,9 @@ import androidx.compose.material3.Text
 import coil.compose.AsyncImage
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.net.HongguoFeed
+import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.rememberCoverRequest
+import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.OnBg
 import com.hgtv.app.ui.theme.OnBgVariant
@@ -79,12 +81,6 @@ fun HomePage(
     var feedSession by remember { mutableStateOf("") }
     var loadingMore by remember { mutableStateOf(false) }
     val sessionId = remember { (1000000000000000000L..8999999999999999999L).random().toString() }
-
-    // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
-    val resumePrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
-    val rankPrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
-    val feedPrefetch = com.hgtv.app.ui.rememberCoverPrefetcher()
-    resumePrefetch.update(history.map { it.cover })
 
     // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落推荐首卡；每会话仅一次
     val resumeFirstFocus = remember { FocusRequester() }
@@ -121,6 +117,8 @@ fun HomePage(
         if (history.isNotEmpty()) {
             item { RowHeader("继续观看") }
             item {
+                // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
+                val resumePrefetch = rememberRowPrefetch(history.map { it.cover })
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
                         PosterCard(
@@ -142,9 +140,10 @@ fun HomePage(
             when {
                 rankItems == null && rankError == null -> RowHint("加载中…")
                 rankError != null -> RowHint("热播榜加载失败：$rankError")
-                else -> LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                else -> {
                     val rankList = rankItems.orEmpty()
-                    rankPrefetch.update(rankList.map { it.cover })
+                    val rankPrefetch = rememberRowPrefetch(rankList.map { it.cover })
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
                         PosterCard(
                             title = item.title,
@@ -154,6 +153,7 @@ fun HomePage(
                             onClick = { onOpenDetail(item.seriesId) },
                         )
                     }
+                    }
                 }
             }
         }
@@ -162,7 +162,9 @@ fun HomePage(
             when {
                 !historyReady || (feedItems.isEmpty() && feedError == null) -> RowHint("加载中…")
                 feedItems.isEmpty() && feedError != null -> RowHint("推荐加载失败：$feedError")
-                else -> LazyRow(
+                else -> {
+                    val feedPrefetch = rememberRowPrefetch(feedItems.map { it.cover })
+                    LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     val debugFirst = feedItems.none { it.seriesId == DEBUG_SERIES_ID }
@@ -196,6 +198,7 @@ fun HomePage(
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -264,7 +267,7 @@ fun PosterCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused, focusedScale)
+    val scale = focusScale(focused, focusedScale)
     LaunchedEffect(focused) {
         if (focused) onFocused?.invoke()
     }
@@ -284,7 +287,7 @@ fun PosterCard(
         ) {
             if (cover.isNotEmpty()) {
                 AsyncImage(
-                    model = com.hgtv.app.ui.rememberCoverRequest(cover),
+                    model = rememberCoverRequest(cover),
                     contentDescription = title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().background(PosterPlaceholder),
@@ -354,7 +357,7 @@ private fun LoadMoreCard(loading: Boolean, onClick: () -> Unit) {
 private fun ActionCard(text: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = com.hgtv.app.ui.focusScale(focused)
+    val scale = focusScale(focused)
     Box(
         Modifier
             .width(150.dp)
