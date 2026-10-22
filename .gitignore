@@ -2,11 +2,21 @@
 build/
 app/build/
 .gradle/
+.kotlin/
 local.properties
+
+# 签名密钥与构建产物（永不入库）
+*.jks
+*.keystore
+*.apk
+*.aab
 
 # IDE
 .idea/
 *.iml
+
+# Claude Code 本地运行时
+.claude/
 
 # 系统临时
 .DS_Store

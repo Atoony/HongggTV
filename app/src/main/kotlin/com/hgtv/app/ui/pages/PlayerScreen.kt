@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -64,7 +65,7 @@ import androidx.media3.ui.PlayerView
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
 import com.hgtv.app.net.HongguoApi
-import com.hgtv.app.player.CencDataSource
+import com.hgtv.app.player.LocalClearKeyCallback
 import com.hgtv.app.player.StreamException
 import com.hgtv.app.player.StreamRepository
 import com.hgtv.app.ui.theme.Bg
@@ -159,8 +160,19 @@ fun PlayerScreen(
             .setReadTimeoutMs(8_000)
             .setAllowCrossProtocolRedirects(true)
         val key = option.cencKey
-        val dsFactory = CencDataSource.Factory(httpFactory) { key }
-        val source = DefaultMediaSourceFactory(dsFactory).createMediaSource(MediaItem.fromUri(uri))
+        // CENC 流：本地 ClearKey DRM session 做样本级解密（密钥仅内存，每次 open 重设）；
+        // 明文流（网页直链兜底）：普通 DataSource，不建 DRM 会话。
+        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
+        val mediaItem = if (key != null) {
+            sourceFactory.setDrmSessionManagerProvider { LocalClearKeyCallback.sessionManager(key) }
+            MediaItem.Builder()
+                .setUri(uri)
+                .setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID).build())
+                .build()
+        } else {
+            MediaItem.fromUri(uri)
+        }
+        val source = sourceFactory.createMediaSource(mediaItem)
         player.setMediaSource(source, positionMs)
         player.prepare()
         player.playWhenReady = true
