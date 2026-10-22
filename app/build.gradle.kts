@@ -64,9 +64,9 @@ dependencies {
     implementation("androidx.tv:tv-material:1.0.0-beta01")
 
     // Media3 播放器
-    implementation("androidx.media3:media3-exoplayer:1.3.1")
-    implementation("androidx.media3:media3-ui:1.3.1")
-    implementation("androidx.media3:media3-datasource:1.3.1")
+    implementation("androidx.media3:media3-exoplayer:1.6.0")
+    implementation("androidx.media3:media3-ui:1.6.0")
+    implementation("androidx.media3:media3-datasource:1.6.0")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
@@ -80,4 +80,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+}
+
+// 线上探针开关（HGTV_LIVE_PROBE 环境变量会被常驻 daemon 固化，改走 -PhgLive 每次显式传）
+tasks.withType<Test>().configureEach {
+    if (project.hasProperty("hgLive")) environment("HGTV_LIVE_PROBE", "1")
 }
