@@ -89,13 +89,17 @@ class HongguoFeed(
         )
     }
 
-    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；content 为空时走 mergeLoaderData script 标签）。 */
+    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；content 为空时走 script 标签兜底）。 */
     suspend fun hotDramaRank(): List<RankItem> {
         val (status, body) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             webRawGet("/rank/hot-drama") // 挂 IO：LaunchedEffect 主线程直调会 NetworkOnMainThread
         }
         if (status != 200 || body.isEmpty()) throw IllegalStateException("热播榜请求失败 HTTP $status")
-        val html = String(body, Charsets.UTF_8)
+        return parseRankPage(String(body, Charsets.UTF_8))
+    }
+
+    /** rank 页解析（离线可测）：_ROUTER_DATA.content 为空时走 script 标签兜底（两代结构）。 */
+    internal fun parseRankPage(html: String): List<RankItem> {
         val router = parseRouter(html) ?: throw IllegalStateException("热播榜解析失败")
         val loader = JsonParser.nested(router, "loaderData", "rank_hot-drama/page")
             ?: throw IllegalStateException("热播榜解析失败")
@@ -155,8 +159,17 @@ class HongguoFeed(
         return runCatching { JsonParser.parsePrefix(html.substring(idx.range.first + idx.value.length)) as? Map<String, Any?> }.getOrNull()
     }
 
-    /** mergeLoaderData script 标签 fallback：args=[key,[{key:"content",routerDataFnArgs:["{...}"]}]]（HTML 实体 + 双重 JSON）。 */
+    /** script 标签兜底（两代结构）：
+     *  新（2026-10-24 改版）：data-fn-name="r"，args=[key,"content",{json}]——单引号 attr、实体编码、内容直出；
+     *  旧：data-fn-name="mergeLoaderData"，args=[key,[{key:"content",routerDataFnArgs:["{...}"]}]]（双重 JSON；线上现为 stub，保留兼容）。 */
     private fun extractMergedContent(html: String, loaderKey: String): Map<String, Any?>? {
+        for (m in Regex("""<script[^>]*data-fn-name="r"[^>]*>""").findAll(html)) {
+            val attr = Regex("""data-fn-args='([^']*)'""").find(m.value)?.groupValues?.get(1) ?: continue
+            val args = runCatching { JsonParser.parse(htmlUnescape(attr)) as? List<Any?> }.getOrNull() ?: continue
+            if (args.getOrNull(0) as? String != loaderKey) continue
+            if (args.getOrNull(1) as? String != "content") continue
+            return args.getOrNull(2) as? Map<String, Any?>
+        }
         val tagRe = Regex("""<script[^>]*data-fn-name="mergeLoaderData"[^>]*>""")
         for (m in tagRe.findAll(html)) {
             val tag = m.value
