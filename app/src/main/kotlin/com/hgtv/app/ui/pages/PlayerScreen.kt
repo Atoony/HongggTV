@@ -45,9 +45,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -332,7 +334,10 @@ fun PlayerScreen(
                     .focusRequester(stageFocus)
                     .focusable()
                     .onPreviewKeyEvent { e ->
-                        when (e.key.keyCode.toInt()) {
+                        // Android 上 e.key.keyCode 是键码左移 32 位的 Long，toInt() 恒 0；须取 nativeKeyEvent.keyCode。
+                        // 按键会 KeyDown/KeyUp 各派发一次，只认 KeyDown 防 seek 双跳。
+                        if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (e.key.nativeKeyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
                                 player.seekTo((player.currentPosition - SEEK_STEP_MS).coerceAtLeast(0)); true
                             }
@@ -467,7 +472,8 @@ private fun BoxScope.ControlsBar(
             .background(Scrim.copy(alpha = 0.92f))
             .onPreviewKeyEvent { e ->
                 // ↑ 收起选项栏（SPEC §3.4 态2）；其余方向/OK 键重置 5s 收起计时
-                when (e.key.keyCode.toInt()) {
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key.nativeKeyCode) {
                     KeyEvent.KEYCODE_DPAD_UP -> {
                         onDismiss(); true
                     }
@@ -572,7 +578,8 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
             .clickable(interactionSource = interaction, indication = null) {}
             .onPreviewKeyEvent { e ->
                 if (!focused) return@onPreviewKeyEvent false
-                when (e.key.keyCode.toInt()) {
+                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (e.key.nativeKeyCode) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> {
                         onSeek((positionMs - SEEK_STEP_MS).coerceAtLeast(0)); true
                     }
