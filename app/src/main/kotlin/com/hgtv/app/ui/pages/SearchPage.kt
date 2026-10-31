@@ -12,14 +12,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -39,6 +41,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
@@ -53,6 +56,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hgtv.app.net.HongguoFeed
 import com.hgtv.app.net.HongguoWeb
 import com.hgtv.app.net.Suggestion
 import com.hgtv.app.net.WebDrama
@@ -99,10 +103,36 @@ object SearchHistory {
     }
 }
 
-/** 搜索页（SPEC §3.2 / 票 06）：软键盘 + 双候选区 + 历史 + 结果网格。 */
+/** 中列首焦区判定（票11 焦点流）：联想 > 直达 > 拼音；全空返回 null（中列无候选，RIGHT 走默认焦点搜索）。 */
+internal fun firstCandidateRow(
+    suggestions: List<Suggestion>,
+    nameHits: List<WebDrama>,
+    pinyinCandidates: List<String>,
+): Int? = when {
+    suggestions.isNotEmpty() -> 0
+    nameHits.isNotEmpty() -> 1
+    pinyinCandidates.isNotEmpty() -> 2
+    else -> null
+}
+
+/** 右列热门词（降级源=热播榜标题，侦察结论见票11）：滤空白、同名去重、保序，截 max 条。 */
+internal fun hotWordsFromRank(ranks: List<HongguoFeed.RankItem>, max: Int = 10): List<String> {
+    val seen = HashSet<String>()
+    val out = ArrayList<String>()
+    for (r in ranks) {
+        val title = r.title.trim()
+        if (title.isEmpty() || !seen.add(title)) continue
+        out.add(title)
+        if (out.size >= max) break
+    }
+    return out
+}
+
+/** 搜索页（票 11 三列改版，B 站 TV 式）：左列键盘输入 / 中列联想直达 / 右列历史热门 + 结果网格。 */
 @Composable
 fun SearchPage(
     web: HongguoWeb,
+    feed: HongguoFeed,
     onOpenDetail: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -111,23 +141,39 @@ fun SearchPage(
     var pinyinMode by remember { mutableStateOf(true) } // 拼 / EN
     var suggestions by remember { mutableStateOf<List<Suggestion>>(emptyList()) }
     var nameHits by remember { mutableStateOf<List<WebDrama>>(emptyList()) }
+    var suggestLoading by remember { mutableStateOf(false) } // 联想在飞：中列区分「加载中/无候选」
     var history by remember { mutableStateOf(SearchHistory.load(ctx)) }
+    var hotWords by remember { mutableStateOf<List<String>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var results by remember { mutableStateOf<List<WebDrama>?>(null) } // null=未搜索；返回键盘保留
     var resultWord by remember { mutableStateOf("") }
     var showResults by remember { mutableStateOf(false) }
-    var emptyNotice by remember { mutableStateOf("") } // 空态提示，显示于键盘态候选区（SPEC：空态焦点回键盘）
+    var emptyNotice by remember { mutableStateOf("") } // 空态提示，显示于键盘态中列（SPEC：空态焦点回键盘）
+
+    // 右列热门词：降级源=热播榜 top 标题（票11 侦察结论：web 域无热搜词榜）；失败静默隐藏
+    LaunchedEffect(Unit) {
+        hotWords = try {
+            hotWordsFromRank(feed.hotDramaRank())
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
     // 联想 300ms 停顿刷新：每次按键重启 effect，天然防抖（SPEC §3.2）
     LaunchedEffect(query, pinyinMode) {
         if (emptyNotice.isNotEmpty()) emptyNotice = "" // 用户重新打字即撤销空态提示
         if (query.isBlank()) {
+            suggestLoading = false
             suggestions = emptyList()
             nameHits = emptyList()
         } else {
+            suggestLoading = true
             delay(300)
             runCatching { suggestions = web.suggestions(query, 10) }
             runCatching { nameHits = web.nameIndex(query) }
+            suggestLoading = false
         }
     }
 
@@ -190,7 +236,9 @@ fun SearchPage(
                 suggestions = suggestions,
                 nameHits = nameHits,
                 pinyinCandidates = pinyinCandidates,
+                suggestLoading = suggestLoading,
                 history = history,
+                hotWords = hotWords,
                 emptyNotice = emptyNotice,
                 onKey = { ch -> query = (query + if (pinyinMode) ch.lowercase() else ch).take(30) },
                 onBackspace = { query = query.dropLast(1) },
@@ -202,6 +250,7 @@ fun SearchPage(
                 },
                 onPickHistory = { doSearch(it) },
                 onClearHistory = { SearchHistory.clear(ctx); history = emptyList() },
+                onPickHotWord = { doSearch(it) },
                 onSearch = { doSearch(query) },
             )
         }
@@ -215,7 +264,9 @@ private fun SearchBoard(
     suggestions: List<Suggestion>,
     nameHits: List<WebDrama>,
     pinyinCandidates: List<String>,
+    suggestLoading: Boolean,
     history: List<String>,
+    hotWords: List<String>,
     emptyNotice: String,
     onKey: (String) -> Unit,
     onBackspace: () -> Unit,
@@ -225,41 +276,54 @@ private fun SearchBoard(
     onPickPinyin: (String) -> Unit,
     onPickHistory: (String) -> Unit,
     onClearHistory: () -> Unit,
+    onPickHotWord: (String) -> Unit,
     onSearch: () -> Unit,
 ) {
     val boardFocus = remember { FocusRequester() }
     val firstCandidateFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { boardFocus.requestFocus() } } // 进页/回键盘 落键盘
 
-    val candidatesReady = suggestions.isNotEmpty() || nameHits.isNotEmpty() || pinyinCandidates.isNotEmpty()
+    // 中列首焦区单点判定（联想>直达>拼音）；null=中列无候选
+    val firstRow = firstCandidateRow(suggestions, nameHits, pinyinCandidates)
 
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        QueryBox(query, pinyinMode)
-        // 候选区：空态提示 > 空输入历史（显示于联想位）> 联想 / 直达 / 拼音
-        when {
-            emptyNotice.isNotEmpty() -> EmptyNotice(emptyNotice)
-            query.isBlank() -> HistoryRow(history, onPickHistory, onClearHistory)
-            else -> {
-                // ↓ 直达的候选优先级（联想>直达>拼音）在此单点判定
-                val firstFocusRow = when {
-                    suggestions.isNotEmpty() -> 0
-                    nameHits.isNotEmpty() -> 1
-                    else -> 2
-                }
-                SuggestRow("联想", suggestions.map { it.name }, onPickSuggestion, firstFocus = if (firstFocusRow == 0) firstCandidateFocus else null)
-                SuggestRow("直达", nameHits.map { it.title }, onPickName, firstFocus = if (firstFocusRow == 1) firstCandidateFocus else null)
-                SuggestRow("拼音", pinyinCandidates, onPickPinyin, firstFocus = if (firstFocusRow == 2) firstCandidateFocus else null)
-            }
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        // 左列（约 45%）：QueryBox + ABC 键盘
+        Column(Modifier.weight(0.45f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            QueryBox(query, pinyinMode)
+            Keyboard(
+                pinyinMode = pinyinMode,
+                // 空态提示占据中列时首焦 requester 未挂载，行尾 RIGHT 须走默认搜索（评审#4）
+                rightTarget = if (firstRow != null && emptyNotice.isEmpty()) firstCandidateFocus else null,
+                onKey = onKey,
+                onBackspace = onBackspace,
+                onToggleMode = onToggleMode,
+                onSearch = onSearch,
+                modifier = Modifier.weight(1f).focusRequester(boardFocus),
+            )
         }
-        Keyboard(
-            pinyinMode = pinyinMode,
-            candidatesReady = candidatesReady,
+        // 中列（约 30%）：联想 / 直达 / 拼音 竖排列表（B 站样式条目）
+        MiddleColumn(
+            query = query,
+            emptyNotice = emptyNotice,
+            suggestions = suggestions,
+            nameHits = nameHits,
+            pinyinCandidates = pinyinCandidates,
+            suggestLoading = suggestLoading,
+            firstRow = firstRow,
             firstCandidateFocus = firstCandidateFocus,
-            onKey = onKey,
-            onBackspace = onBackspace,
-            onToggleMode = onToggleMode,
-            onSearch = onSearch,
-            modifier = Modifier.weight(1f).focusRequester(boardFocus),
+            onPickSuggestion = onPickSuggestion,
+            onPickName = onPickName,
+            onPickPinyin = onPickPinyin,
+            modifier = Modifier.weight(0.30f),
+        )
+        // 右列（约 25%）：搜索历史 + 热门
+        RightColumn(
+            history = history,
+            hotWords = hotWords,
+            onPickHistory = onPickHistory,
+            onClearHistory = onClearHistory,
+            onPickHotWord = onPickHotWord,
+            modifier = Modifier.weight(0.25f),
         )
     }
 }
@@ -308,65 +372,189 @@ private fun EmptyNotice(text: String) {
     }
 }
 
-/** 搜索历史行（空输入时显示在联想位，SPEC §3.2）。 */
+/** 中列：联想/直达/拼音竖排候选；空输入空态引导；空结果提示；联想未回时轻提示。 */
 @Composable
-private fun HistoryRow(history: List<String>, onPick: (String) -> Unit, onClear: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("历史", color = Primary, fontSize = 13.sp)
-        if (history.isEmpty()) {
-            Text("暂无搜索历史", color = Dim, fontSize = 13.sp)
-        } else {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-                items(history) { word -> Chip(word) { onPick(word) } }
-            }
-            Text(
-                "清空",
-                color = Dim,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(KeySurfaceDim)
-                    .clickable(onClick = onClear)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+private fun MiddleColumn(
+    query: String,
+    emptyNotice: String,
+    suggestions: List<Suggestion>,
+    nameHits: List<WebDrama>,
+    pinyinCandidates: List<String>,
+    suggestLoading: Boolean,
+    firstRow: Int?,
+    firstCandidateFocus: FocusRequester,
+    onPickSuggestion: (String) -> Unit,
+    onPickName: (String) -> Unit,
+    onPickPinyin: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when {
+        emptyNotice.isNotEmpty() -> Box(modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+            EmptyNotice(emptyNotice)
         }
-    }
-}
-
-@Composable
-private fun SuggestRow(label: String, words: List<String>, onPick: (String) -> Unit, firstFocus: FocusRequester? = null) {
-    if (words.isEmpty()) return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = Primary, fontSize = 13.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-            itemsIndexed(words) { i, w ->
-                Chip(
-                    w,
-                    modifier = if (i == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
-                    onClick = { onPick(w) },
+        query.isBlank() -> Column(
+            modifier.fillMaxHeight().padding(top = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("用左侧键盘输入剧名 / 拼音首字母", color = OnBg, fontSize = 15.sp)
+            Text("或从右侧「历史 / 热门」选词", color = Dim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+        firstRow == null -> Box(modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+            // 评审#1：区分在飞（防抖/网络）与真无候选（EN 无匹配/纯数字），不再永久「加载中」
+            Text(if (suggestLoading) "联想加载中…" else "无联想候选", color = Dim, fontSize = 13.sp)
+        }
+        else -> {
+            val listState = rememberLazyListState()
+            // 候选集变化（新按键/联想直达到达）时滚回顶：LazyColumn 按键锚定滚动，
+            // 上方 prepend 新区段会锚住旧首可见项把首焦区滚出视口（未组合→focusRequester 悬空）
+            LaunchedEffect(query, suggestions.size, nameHits.size, pinyinCandidates.size) {
+                if (listState.firstVisibleItemIndex != 0) listState.scrollToItem(0)
+            }
+            LazyColumn(
+                state = listState,
+                modifier = modifier.fillMaxHeight(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(top = 4.dp),
+            ) {
+                candidateSection(
+                    label = "联想",
+                    entries = suggestions.map { it.name to "" },
+                    firstFocus = if (firstRow == 0) firstCandidateFocus else null,
+                    onPick = onPickSuggestion,
+                )
+                candidateSection(
+                    label = "直达",
+                    entries = nameHits.take(NAME_HITS_SHOWN).map { it.title to episodeBadge(it) },
+                    firstFocus = if (firstRow == 1) firstCandidateFocus else null,
+                    onPick = onPickName,
+                )
+                candidateSection(
+                    label = "拼音",
+                    entries = pinyinCandidates.map { it to "" },
+                    firstFocus = if (firstRow == 2) firstCandidateFocus else null,
+                    onPick = onPickPinyin,
                 )
             }
         }
     }
 }
 
-@Composable
-private fun Chip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    Box(
-        modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (focused) PrimarySoft else KeySurface)
-            .border(1.dp, if (focused) Primary else Color.Transparent, RoundedCornerShape(6.dp))
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
-        Text(text, color = if (focused) OnBg else OnBgVariant, fontSize = 14.sp, maxLines = 1)
+/** 剧卡集数角标：episode_cnt 优先退 remark，缺「集」后缀则补——中列直达与结果网格共用，避免两套格式（评审#6）。 */
+internal fun episodeBadge(d: WebDrama): String =
+    d.episodeCnt.ifEmpty { d.remark }.let { if (it.isNotEmpty() && !it.endsWith("集")) "${it}集" else it }
+
+/** 中列直达展示上限（nameIndex 最多回 50 条，不截会把拼音区挤出屏幕外）。 */
+private const val NAME_HITS_SHOWN = 10
+
+private fun LazyListScope.candidateSection(
+    label: String,
+    entries: List<Pair<String, String>>,
+    firstFocus: FocusRequester?,
+    onPick: (String) -> Unit,
+) {
+    if (entries.isEmpty()) return
+    item(key = "${label}-head") { SectionLabel(label) }
+    itemsIndexed(entries, key = { i, _ -> "$label-$i" }) { i, (main, sub) ->
+        CandidateItem(
+            text = main,
+            sub = sub,
+            modifier = if (i == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
+            onClick = { onPick(main) },
+        )
     }
 }
 
-/** ABC 字母序键盘（SPEC §3.2）：数字行 + A-J / K-T / U-Z + 拼/EN ⌫ 空格 搜索。 */
+/** 右列：搜索历史（LRU 竖排 + 清空）+ 热门（热播榜标题降级，票11 侦察结论）。 */
+@Composable
+private fun RightColumn(
+    history: List<String>,
+    hotWords: List<String>,
+    onPickHistory: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onPickHotWord: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier.fillMaxHeight(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item(key = "history-head") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("搜索历史", color = Primary, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                if (history.isNotEmpty()) {
+                    Text(
+                        "清空",
+                        color = Dim,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(KeySurfaceDim)
+                            .clickable(onClick = onClearHistory)
+                            .padding(horizontal = 10.dp, vertical = 3.dp),
+                    )
+                }
+            }
+        }
+        if (history.isEmpty()) {
+            item(key = "history-empty") { Text("暂无搜索历史", color = Dim, fontSize = 13.sp) }
+        } else {
+            items(history, key = { "history-$it" }) { word ->
+                CandidateItem(word, onClick = { onPickHistory(word) })
+            }
+        }
+        if (hotWords.isNotEmpty()) {
+            item(key = "hot-head") { SectionLabel("热门") }
+            itemsIndexed(hotWords, key = { i, _ -> "hot-$i" }) { i, word ->
+                CandidateItem(word, leading = "${i + 1}", onClick = { onPickHotWord(word) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(text, color = Primary, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+}
+
+/** B 站样式条目：整行可聚焦，主文本 + 可选副文本/序号。 */
+@Composable
+private fun CandidateItem(
+    text: String,
+    modifier: Modifier = Modifier,
+    sub: String = "",
+    leading: String = "",
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (focused) PrimarySoft else KeySurface)
+            .border(1.dp, if (focused) Primary else Color.Transparent, RoundedCornerShape(8.dp))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leading.isNotEmpty()) {
+            Text(leading, color = Dim, fontSize = 13.sp, modifier = Modifier.padding(end = 8.dp))
+        }
+        Text(
+            text,
+            color = if (focused) OnBg else OnBgVariant,
+            fontSize = 15.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        if (sub.isNotEmpty()) {
+            Text(sub, color = Dim, fontSize = 12.sp, maxLines = 1)
+        }
+    }
+}
+
+/** ABC 字母序键盘（SPEC §3.2 / 票11 三列）：数字行 + A-J / K-T / U-Z + 拼/EN ⌫ 空格 搜索。 */
 private val KEY_ROWS = listOf(
     "1234567890",
     "ABCDEFGHIJ",
@@ -377,20 +565,21 @@ private val KEY_ROWS = listOf(
 @Composable
 private fun Keyboard(
     pinyinMode: Boolean,
-    candidatesReady: Boolean,
-    firstCandidateFocus: FocusRequester,
+    rightTarget: FocusRequester?, // 中列首焦（联想>直达>拼音）；null=中列无候选，行尾 RIGHT 走默认
     onKey: (String) -> Unit,
     onBackspace: () -> Unit,
     onToggleMode: () -> Unit,
     onSearch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 行尾键（每行最后一列）聚焦标记：仅行尾 RIGHT 进中列（票11），行内 RIGHT 照常移动
+    var lastColFocused by remember { mutableStateOf(false) }
     Column(
         modifier
             .fillMaxWidth()
-            .onPreviewKeyEvent { e -> // 打字后 ↓ 直达候选首项（联想>直达>拼音）
-                if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionDown && candidatesReady) {
-                    runCatching { firstCandidateFocus.requestFocus() }.isSuccess
+            .onPreviewKeyEvent { e -> // 行尾 RIGHT → 中列候选首项（联想>直达>拼音）；DOWN 留给行间移动（票11）
+                if (e.type == KeyEventType.KeyDown && e.key == Key.DirectionRight && lastColFocused && rightTarget != null) {
+                    runCatching { rightTarget.requestFocus() }.isSuccess
                 } else {
                     false
                 }
@@ -400,13 +589,20 @@ private fun Keyboard(
         KEY_ROWS.forEachIndexed { i, row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { ch ->
-                    KeyButton(label = ch.toString(), weight = 1f, onClick = { onKey(ch.toString()) })
+                    // 行尾判定：末行字母后还有功能键，视觉末列只有 SearchKey
+                    val isLast = ch == row.last() && i != KEY_ROWS.lastIndex
+                    KeyButton(
+                        label = ch.toString(),
+                        weight = 1f,
+                        onFocusGained = { lastColFocused = isLast },
+                        onClick = { onKey(ch.toString()) },
+                    )
                 }
                 if (i == KEY_ROWS.lastIndex) { // U-Z 行尾功能键：拼/EN ⌫ 空格 搜索
-                    KeyButton(label = if (pinyinMode) "拼/EN" else "EN/拼", weight = 1.4f, onClick = onToggleMode)
-                    KeyButton(label = "⌫", weight = 1.4f, onClick = onBackspace)
-                    KeyButton(label = "空格", weight = 1.4f, onClick = { onKey(" ") })
-                    SearchKey(onSearch)
+                    KeyButton(label = if (pinyinMode) "拼/EN" else "EN/拼", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onToggleMode)
+                    KeyButton(label = "⌫", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onBackspace)
+                    KeyButton(label = "空格", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = { onKey(" ") })
+                    SearchKey(onFocusGained = { lastColFocused = true }, onClick = onSearch)
                 }
             }
         }
@@ -414,7 +610,12 @@ private fun Keyboard(
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.KeyButton(label: String, weight: Float, onClick: () -> Unit) {
+private fun androidx.compose.foundation.layout.RowScope.KeyButton(
+    label: String,
+    weight: Float,
+    onFocusGained: () -> Unit = {},
+    onClick: () -> Unit,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     Box(
@@ -423,6 +624,7 @@ private fun androidx.compose.foundation.layout.RowScope.KeyButton(label: String,
             .height(52.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Primary else KeySurface)
+            .onFocusChanged { if (it.isFocused) onFocusGained() }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -431,7 +633,7 @@ private fun androidx.compose.foundation.layout.RowScope.KeyButton(label: String,
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.SearchKey(onClick: () -> Unit) {
+private fun androidx.compose.foundation.layout.RowScope.SearchKey(onFocusGained: () -> Unit = {}, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     Box(
@@ -440,6 +642,7 @@ private fun androidx.compose.foundation.layout.RowScope.SearchKey(onClick: () ->
             .height(52.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color(0xFFFF8A65) else Primary)
+            .onFocusChanged { if (it.isFocused) onFocusGained() }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -488,7 +691,7 @@ private fun ResultGrid(
                     val season = HongguoWeb.seasonOf(d.title).season
                     PosterCard(
                         title = d.title,
-                        badge = d.episodeCnt.ifEmpty { d.remark }.let { if (it.isNotEmpty() && !it.endsWith("集")) "${it}集" else it },
+                        badge = episodeBadge(d),
                         cover = d.cover,
                         onFocused = { prefetcher.onFocus(index) },
                         onClick = { onOpenDetail(d.seriesId) },

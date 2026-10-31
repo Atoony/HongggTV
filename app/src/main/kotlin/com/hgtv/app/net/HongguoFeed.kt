@@ -20,15 +20,25 @@ class HongguoFeed(
         val remark: String = "",
     )
 
-    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；page=1..5，各 20 部）。 */
+    private val rankCache = HashMap<Int, Pair<Long, List<RankItem>>>()
+    private val RANK_CACHE_TTL_MS = 5 * 60_000L
+
+    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；page=1..5，各 20 部）。
+     *  TTL 缓存（票11 评审#2）：首页与搜索页共用一源，进页不重拉同一 page（IP 频控风险）。 */
     suspend fun hotDramaRank(page: Int = 1): List<RankItem> {
+        val now = System.currentTimeMillis()
+        val cached = rankCache[page]
+        if (cached != null && now - cached.first < RANK_CACHE_TTL_MS) return cached.second
         val path = if (page > 1) "/rank/hot-drama?page=$page" else "/rank/hot-drama"
         val (status, body) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             webRawGet(path) // 挂 IO：LaunchedEffect 主线程直调会 NetworkOnMainThread
         }
         if (status != 200 || body.isEmpty()) throw IllegalStateException("热播榜请求失败 HTTP $status")
-        return parseRankPage(String(body, Charsets.UTF_8))
+        val parsed = parseRankPage(String(body, Charsets.UTF_8))
+        rankCache[page] = now to parsed
+        return parsed
     }
+
 
     /** rank 页解析（离线可测）：优先 _ROUTER_DATA.content；为空或 router 缺失时走 script 标签兜底（两代结构）。
      *  票10 起 router 整体缺失也尝试 r 标签（数据与 router 结构解耦，抗再改版）。 */

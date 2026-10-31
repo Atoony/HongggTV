@@ -173,6 +173,7 @@ fun AppRoot() {
                 )
                 NavDest.SEARCH -> SearchPage(
                     web = web,
+                    feed = feed,
                     onOpenDetail = { detailSeriesId = it },
                 )
                 NavDest.HISTORY -> HistoryPage(
