@@ -57,10 +57,11 @@ import com.hgtv.app.ui.theme.Scrim
 import com.hgtv.app.ui.theme.SeasonGold
 import com.hgtv.app.ui.theme.Surface
 
-// wayfinder 票 04 验证过的样本剧（调试入口，保留在推荐行首）
+// wayfinder 票 04 验证过的样本剧（调试入口，保留在热播榜首）
 const val DEBUG_SERIES_ID = "7688352674999176254"
 
-/** 首页（SPEC §3.1）：继续观看 / 热播榜 / 为你推荐 三行，无 banner。 */
+/** 首页（SPEC §3.1）：继续观看 / 热播榜 两行，无 banner。
+ *  2026-10-31 "为你推荐"行移除：票10 后与热播榜同源（web 榜单分页），两行头部完全重复。 */
 @Composable
 fun HomePage(
     feed: HongguoFeed,
@@ -74,15 +75,10 @@ fun HomePage(
 ) {
     var rankItems by remember { mutableStateOf<List<HongguoFeed.RankItem>?>(null) }
     var rankError by remember { mutableStateOf<String?>(null) }
-    var feedItems by remember { mutableStateOf<List<HongguoFeed.FeedItem>>(emptyList()) }
-    var feedError by remember { mutableStateOf<String?>(null) }
-    var feedHasMore by remember { mutableStateOf(false) }
-    var feedOffset by remember { mutableStateOf(0) }
-    var loadingMore by remember { mutableStateOf(false) }
 
-    // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落推荐首卡；每会话仅一次
+    // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落热播榜首卡；每会话仅一次
     val resumeFirstFocus = remember { FocusRequester() }
-    val recommendFirstFocus = remember { FocusRequester() }
+    val rankFirstFocus = remember { FocusRequester() }
     var focusPlaced by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -91,18 +87,6 @@ fun HomePage(
         } catch (e: Exception) {
             android.util.Log.w("HgHome", "热播榜失败", e)
             rankError = e.message ?: "热播榜加载失败"
-        }
-    }
-    // 首拉等断点数据就绪，已看剧集进 filter_ids 去重（SPEC §6.1）
-    LaunchedEffect(historyReady) {
-        if (!historyReady) return@LaunchedEffect
-        try {
-            val page = feed.webFeedPage(1, history.map { it.seriesId })
-            feedItems = page.items
-            feedOffset = page.nextOffset
-            feedHasMore = page.hasMore
-        } catch (e: Exception) {
-            feedError = e.message
         }
     }
 
@@ -139,75 +123,40 @@ fun HomePage(
                 rankError != null -> RowHint("热播榜加载失败：$rankError")
                 else -> {
                     val rankList = rankItems.orEmpty()
-                    val rankPrefetch = rememberRowPrefetch(rankList.map { it.cover })
+                    // 调试入口（原推荐行首，2026-10-31 推荐行移除后挪到热播榜首）
+                    val debugFirst = rankList.none { it.seriesId == DEBUG_SERIES_ID }
+                    val rankPrefetch = rememberRowPrefetch(
+                        (if (debugFirst) listOf("") else emptyList()) + rankList.map { it.cover }
+                    )
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (debugFirst) {
+                        item(key = "debug") {
+                            PosterCard(title = "调试样本剧", badge = "调试", cover = "", focusRequester = rankFirstFocus, onClick = { onOpenDetail(DEBUG_SERIES_ID) })
+                        }
+                    }
                     itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
                         PosterCard(
                             title = item.title,
                             badge = "NO.${item.rank}",
                             cover = item.cover,
-                            onFocused = { rankPrefetch.onFocus(index) },
+                            focusRequester = if (index == 0 && !debugFirst) rankFirstFocus else null,
+                            onFocused = { rankPrefetch.onFocus(index + if (debugFirst) 1 else 0) },
                             onClick = { onOpenDetail(item.seriesId) },
                         )
                     }
                     }
-                }
-            }
-        }
-        item { RowHeader("为你推荐") }
-        item {
-            when {
-                !historyReady || (feedItems.isEmpty() && feedError == null) -> RowHint("加载中…")
-                feedItems.isEmpty() && feedError != null -> RowHint("推荐加载失败：$feedError")
-                else -> {
-                    val feedPrefetch = rememberRowPrefetch(feedItems.map { it.cover })
-                    LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    val debugFirst = feedItems.none { it.seriesId == DEBUG_SERIES_ID }
-                    if (debugFirst) {
-                        item(key = "debug") {
-                            PosterCard(title = "调试样本剧", badge = "调试", cover = "", onClick = { onOpenDetail(DEBUG_SERIES_ID) })
-                        }
-                    }
-                    itemsIndexed(feedItems, key = { _, it -> it.seriesId }) { index, item ->
-                        PosterCard(
-                            title = item.title,
-                            badge = buildString {
-                                if (item.episodeCount.isNotEmpty()) append("${item.episodeCount}集")
-                                if (item.remark.isNotEmpty()) append(" ${item.remark}")
-                            }.trim(),
-                            cover = item.cover,
-                            focusRequester = if (index == 0) recommendFirstFocus else null,
-                            onFocused = { feedPrefetch.onFocus(index) },
-                            onClick = { onOpenDetail(item.seriesId) },
-                        )
-                    }
-                    if (feedHasMore) {
-                        item(key = "loadmore") {
-                            LoadMoreCard(
-                                loading = loadingMore,
-                                onClick = {
-                                    if (!loadingMore) {
-                                        loadingMore = true
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
                 }
             }
         }
     }
 
-    // 焦点落位在数据就绪后（推荐首卡异步到达；LazyRow item 挂载略晚时短暂重试；
+    // 焦点落位在数据就绪后（热播榜首卡异步到达；LazyRow item 挂载略晚时短暂重试；
     // 仅在首页可见时执行，避免详情/播放覆盖层下抢焦点；成功才置位）
-    LaunchedEffect(active, historyReady, history.size, feedItems.size) {
+    LaunchedEffect(active, historyReady, history.size, rankItems?.size) {
         if (!active || !historyReady || focusPlaced) return@LaunchedEffect
         val target = when {
             history.isNotEmpty() -> resumeFirstFocus
-            feedItems.isNotEmpty() -> recommendFirstFocus
+            !rankItems.isNullOrEmpty() -> rankFirstFocus
             else -> return@LaunchedEffect
         }
         repeat(8) {
@@ -216,23 +165,6 @@ fun HomePage(
                 return@LaunchedEffect
             }
             kotlinx.coroutines.delay(50)
-        }
-    }
-
-    // 翻页加载（LoadMoreCard 点击触发）
-    if (loadingMore && feedHasMore) {
-        LaunchedEffect(feedOffset, loadingMore) {
-            try {
-                val watched = history.map { it.seriesId }
-                val page = feed.webFeedPage(feedOffset, watched + feedItems.map { it.seriesId })
-                feedItems = (feedItems + page.items).distinctBy { it.seriesId }
-                feedOffset = page.nextOffset
-                feedHasMore = page.hasMore
-            } catch (_: Exception) {
-                feedHasMore = false
-            } finally {
-                loadingMore = false
-            }
         }
     }
 }
@@ -341,11 +273,6 @@ private fun CardBadge(text: String, color: Color) {
 @Composable
 private fun MoreCard(onClick: () -> Unit) {
     ActionCard(text = "更多›", onClick = onClick)
-}
-
-@Composable
-private fun LoadMoreCard(loading: Boolean, onClick: () -> Unit) {
-    ActionCard(text = if (loading) "加载中…" else "加载更多", onClick = onClick)
 }
 
 /** 行尾竖版动作卡：与海报卡同尺寸（9:16 / 150dp），文字居中。 */

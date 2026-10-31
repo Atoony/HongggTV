@@ -1,29 +1,13 @@
 package com.hgtv.app.net
 
-/** 首页行数据源：Web 短剧热播榜分页（推荐行 + 热播榜行共用一条解析链）。
+/** 首页行数据源：Web 短剧热播榜。
  *  2026-10-31 票10：landpage 游客链被服务端收紧全灭（签名/TLS/cookie/设备注册排除矩阵闭合），
- *  推荐行切 web 榜单分页（hongguoduanju.com 域不受影响，page=1..5 各 20 部）。 */
+ *  首页行数据切 web 榜单（hongguoduanju.com 域不受影响）。
+ *  同日"为你推荐"行移除（与热播榜同源重复），webFeedPage/FeedItem/LandPage 一并删除。 */
 class HongguoFeed(
     private val api: HongguoApi,
     private val web: HongguoWeb = HongguoWeb(),
 ) {
-
-    data class FeedItem(
-        val seriesId: String,
-        val title: String,
-        val cover: String,
-        val episodeCount: String,
-        val remark: String,
-        val categories: List<String>,
-        val heat: String,
-    )
-
-    data class LandPage(
-        val items: List<FeedItem>,
-        val nextOffset: Int,
-        val sessionId: String,
-        val hasMore: Boolean,
-    )
 
     data class RankItem(
         val rank: Int,
@@ -35,35 +19,6 @@ class HongguoFeed(
         val episodeCount: String,
         val remark: String = "",
     )
-
-    /** 推荐行（SPEC §6.1 行为不变：连续翻页、已看去重；票10 数据源切 web 榜单分页）。
-     *  page 从 1 起；web 榜单固定排名，同一 seriesId 跨页/与已看重复时由 filterIds 滤除。 */
-    suspend fun webFeedPage(page: Int, filterIds: List<String>): LandPage =
-        buildWebFeed(hotDramaRank(page), page, filterIds)
-
-    /** web 推荐行组装（离线可测）：过滤去重 + RankItem→FeedItem 映射 + 翻页游标。 */
-    internal fun buildWebFeed(rows: List<RankItem>, page: Int, filterIds: List<String>): LandPage {
-        val filtered = HashSet(filterIds)
-        val items = rows
-            .filter { it.seriesId !in filtered }
-            .map {
-                FeedItem(
-                    seriesId = it.seriesId,
-                    title = it.title,
-                    cover = it.cover,
-                    episodeCount = it.episodeCount,
-                    remark = it.remark,
-                    categories = it.tags,
-                    heat = it.heat,
-                )
-            }
-        return LandPage(
-            items = items,
-            nextOffset = page + 1,
-            sessionId = "",
-            hasMore = page < MAX_WEB_FEED_PAGES,
-        )
-    }
 
     /** Web 热播榜（SPEC §6.1：/rank/hot-drama；page=1..5，各 20 部）。 */
     suspend fun hotDramaRank(page: Int = 1): List<RankItem> {
@@ -119,11 +74,6 @@ class HongguoFeed(
     }
 
     private fun firstNonEmpty(vararg values: String): String = values.firstOrNull { it.isNotEmpty() } ?: ""
-
-    private companion object {
-        /** web 榜单分页上限（2026-10-31 侦察：page=1..5，每页 20 部）。 */
-        const val MAX_WEB_FEED_PAGES = 5
-    }
 
     private fun coverAddress(path: String): String {
         if (path.isEmpty()) return ""
