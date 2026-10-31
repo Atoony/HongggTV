@@ -1,6 +1,8 @@
 package com.hgtv.app.net
 
-/** 首页行数据源：landpage 推荐行 + Web 热播榜行。 */
+/** 首页行数据源：Web 短剧热播榜分页（推荐行 + 热播榜行共用一条解析链）。
+ *  2026-10-31 票10：landpage 游客链被服务端收紧全灭（签名/TLS/cookie/设备注册排除矩阵闭合），
+ *  推荐行切 web 榜单分页（hongguoduanju.com 域不受影响，page=1..5 各 20 部）。 */
 class HongguoFeed(
     private val api: HongguoApi,
     private val web: HongguoWeb = HongguoWeb(),
@@ -31,80 +33,58 @@ class HongguoFeed(
         val heat: String,
         val tags: List<String>,
         val episodeCount: String,
+        val remark: String = "",
     )
 
-    /** landpage 推荐行（SPEC §6.1：18 条/页；filter_ids 已看去重）。genre=short_play。 */
-    suspend fun landPage(offset: Int, sessionId: String, filterIds: List<String>): LandPage {
-        val body = JVal.obj(
-            "req_scene" to JVal.str("default"),
-            "offset" to JVal.num(offset.toLong()),
-            "limit" to JVal.num(18),
-            "req_type" to JVal.str("only_content"),
-            "need_selector_panel" to JVal.bool(false),
-            "client_req_type" to JVal.num(if (offset > 0) 2 else 3),
-            "session_id" to JVal.str(sessionId),
-            "filter_ids" to JVal.str(filterIds.joinToString(",")),
-            "select_items" to JVal.obj(
-                "genre" to JVal.arr(JVal.str("short_play")),
-                "sort" to JVal.arr(),
-                "gender" to JVal.arr(),
-                "category_dim_theme" to JVal.arr(),
-                "category_dim_role" to JVal.arr(),
-                "category_dim_epoch" to JVal.arr(),
-                "online_time" to JVal.arr(),
-                "creation_status" to JVal.arr(),
-            ),
-        )
-        val (status, _, content) = api.request("/reading/distribution/category/landpage/v/", body)
-        if (status != 200 || content.isEmpty()) throw IllegalStateException("推荐请求失败 HTTP $status")
-        val root = JsonParser.parse(String(content, Charsets.UTF_8)) as? Map<String, Any?>
-            ?: throw IllegalStateException("推荐响应非 JSON")
-        val data = JsonParser.nested(root, "data") ?: throw IllegalStateException("推荐响应缺少 data")
-        val rows = JsonParser.arr(data["video_data"]) ?: emptyList()
-        val items = ArrayList<FeedItem>()
-        val seen = HashSet<String>()
-        for (row in rows) {
-            val m = JsonParser.obj(row) ?: continue
-            val id = JsonParser.str(m, "series_id_str", "series_id")
-            if (!HongguoApi.NUMERIC_ID.matches(id) || !seen.add(id)) continue
-            items.add(
+    /** 推荐行（SPEC §6.1 行为不变：连续翻页、已看去重；票10 数据源切 web 榜单分页）。
+     *  page 从 1 起；web 榜单固定排名，同一 seriesId 跨页/与已看重复时由 filterIds 滤除。 */
+    suspend fun webFeedPage(page: Int, filterIds: List<String>): LandPage =
+        buildWebFeed(hotDramaRank(page), page, filterIds)
+
+    /** web 推荐行组装（离线可测）：过滤去重 + RankItem→FeedItem 映射 + 翻页游标。 */
+    internal fun buildWebFeed(rows: List<RankItem>, page: Int, filterIds: List<String>): LandPage {
+        val filtered = HashSet(filterIds)
+        val items = rows
+            .filter { it.seriesId !in filtered }
+            .map {
                 FeedItem(
-                    seriesId = id,
-                    title = JsonParser.str(m, "series_title", "series_name", "title").ifEmpty { id },
-                    cover = JsonParser.str(m, "series_cover", "cover"),
-                    episodeCount = JsonParser.str(m, "episode_cnt"),
-                    remark = JsonParser.str(m, "episode_right_text"),
-                    categories = (JsonParser.arr(m["category_list"]) ?: emptyList()).mapNotNull {
-                        JsonParser.str(JsonParser.obj(it), "name").ifEmpty { null }
-                    },
-                    heat = JsonParser.str(m, "series_play_cnt", "play_cnt"),
-                ),
-            )
-        }
+                    seriesId = it.seriesId,
+                    title = it.title,
+                    cover = it.cover,
+                    episodeCount = it.episodeCount,
+                    remark = it.remark,
+                    categories = it.tags,
+                    heat = it.heat,
+                )
+            }
         return LandPage(
             items = items,
-            nextOffset = JsonParser.str(data, "next_offset").toIntOrNull() ?: (offset + items.size),
-            sessionId = JsonParser.str(data, "session_id").ifEmpty { sessionId },
-            hasMore = data["has_more"] == true,
+            nextOffset = page + 1,
+            sessionId = "",
+            hasMore = page < MAX_WEB_FEED_PAGES,
         )
     }
 
-    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；content 为空时走 script 标签兜底）。 */
-    suspend fun hotDramaRank(): List<RankItem> {
+    /** Web 热播榜（SPEC §6.1：/rank/hot-drama；page=1..5，各 20 部）。 */
+    suspend fun hotDramaRank(page: Int = 1): List<RankItem> {
+        val path = if (page > 1) "/rank/hot-drama?page=$page" else "/rank/hot-drama"
         val (status, body) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            webRawGet("/rank/hot-drama") // 挂 IO：LaunchedEffect 主线程直调会 NetworkOnMainThread
+            webRawGet(path) // 挂 IO：LaunchedEffect 主线程直调会 NetworkOnMainThread
         }
         if (status != 200 || body.isEmpty()) throw IllegalStateException("热播榜请求失败 HTTP $status")
         return parseRankPage(String(body, Charsets.UTF_8))
     }
 
-    /** rank 页解析（离线可测）：_ROUTER_DATA.content 为空时走 script 标签兜底（两代结构）。 */
+    /** rank 页解析（离线可测）：优先 _ROUTER_DATA.content；为空或 router 缺失时走 script 标签兜底（两代结构）。
+     *  票10 起 router 整体缺失也尝试 r 标签（数据与 router 结构解耦，抗再改版）。 */
     internal fun parseRankPage(html: String): List<RankItem> {
-        val router = parseRouter(html) ?: throw IllegalStateException("热播榜解析失败")
-        val loader = JsonParser.nested(router, "loaderData", "rank_hot-drama/page")
-            ?: throw IllegalStateException("热播榜解析失败")
-        var content = JsonParser.obj(loader["content"]) ?: emptyMap()
-        if (content["rankList"] == null) {
+        var content: Map<String, Any?>? = null
+        val router = parseRouter(html)
+        if (router != null) {
+            val loader = JsonParser.nested(router, "loaderData", "rank_hot-drama/page")
+            if (loader != null) content = JsonParser.obj(loader["content"]) ?: emptyMap()
+        }
+        if (content == null || content["rankList"] == null) {
             content = extractMergedContent(html, "rank_hot-drama/page") ?: emptyMap()
         }
         if (content["isSuccess"] != true || content["rankList"] == null) {
@@ -124,7 +104,12 @@ class HongguoFeed(
                     cover = coverAddress(JsonParser.str(m, "cover")),
                     heat = JsonParser.str(m, "heatText"),
                     tags = (JsonParser.arr(m["tags"]) ?: emptyList()).map { JsonParser.str(it) },
-                    episodeCount = (JsonParser.arr(m["episodeVids"])?.size ?: 0).toString(),
+                    // episodeCount=总集数(987 级 int)；episodeVids 只是网页兜底免费集 vid 列表，仅作兜底
+                    episodeCount = JsonParser.num(m["episodeCount"]).toInt()
+                        .takeIf { it > 0 }?.toString()
+                        ?: (JsonParser.arr(m["episodeVids"])?.size ?: 0).toString(),
+                    remark = (JsonParser.arr(m["statusTags"]) ?: emptyList())
+                        .map { JsonParser.str(it) }.firstOrNull() ?: "",
                 ),
             )
         }
@@ -134,6 +119,11 @@ class HongguoFeed(
     }
 
     private fun firstNonEmpty(vararg values: String): String = values.firstOrNull { it.isNotEmpty() } ?: ""
+
+    private companion object {
+        /** web 榜单分页上限（2026-10-31 侦察：page=1..5，每页 20 部）。 */
+        const val MAX_WEB_FEED_PAGES = 5
+    }
 
     private fun coverAddress(path: String): String {
         if (path.isEmpty()) return ""

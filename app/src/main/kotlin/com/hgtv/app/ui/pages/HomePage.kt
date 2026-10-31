@@ -78,9 +78,7 @@ fun HomePage(
     var feedError by remember { mutableStateOf<String?>(null) }
     var feedHasMore by remember { mutableStateOf(false) }
     var feedOffset by remember { mutableStateOf(0) }
-    var feedSession by remember { mutableStateOf("") }
     var loadingMore by remember { mutableStateOf(false) }
-    val sessionId = remember { (1000000000000000000L..8999999999999999999L).random().toString() }
 
     // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落推荐首卡；每会话仅一次
     val resumeFirstFocus = remember { FocusRequester() }
@@ -99,10 +97,9 @@ fun HomePage(
     LaunchedEffect(historyReady) {
         if (!historyReady) return@LaunchedEffect
         try {
-            val page = feed.landPage(0, sessionId, history.map { it.seriesId })
+            val page = feed.webFeedPage(1, history.map { it.seriesId })
             feedItems = page.items
             feedOffset = page.nextOffset
-            feedSession = page.sessionId
             feedHasMore = page.hasMore
         } catch (e: Exception) {
             feedError = e.message
@@ -227,10 +224,9 @@ fun HomePage(
         LaunchedEffect(feedOffset, loadingMore) {
             try {
                 val watched = history.map { it.seriesId }
-                val page = feed.landPage(feedOffset, feedSession.ifEmpty { sessionId }, watched + feedItems.map { it.seriesId })
+                val page = feed.webFeedPage(feedOffset, watched + feedItems.map { it.seriesId })
                 feedItems = (feedItems + page.items).distinctBy { it.seriesId }
                 feedOffset = page.nextOffset
-                feedSession = page.sessionId
                 feedHasMore = page.hasMore
             } catch (_: Exception) {
                 feedHasMore = false
