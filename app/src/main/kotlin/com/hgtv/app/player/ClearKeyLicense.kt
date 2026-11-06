@@ -10,12 +10,29 @@ import java.util.Base64
  * Android ClearKey CDM 的 key request 是 JSON `{"kids":["<b64url>"],"type":...}`，
  * provideKeyResponse 需回 W3C ClearKey JSON：
  * `{"keys":[{"kty":"oct","kid":"<b64url>","k":"<b64url>"}],"type":"temporary"}`，
- * kid/k 均为 base64url 无 padding（EME 规范）。内容密钥（spade_a 解出）仅内存传递不落盘。
+ * kid/k 均为 base64url 无 padding（EME 规范）。内容密钥由数据源层（openhongguo）本地计算
+ * （hex 串形态，[hexToBytes] 还原），仅内存传递不落盘。
  */
 object ClearKeyLicense {
 
     fun b64url(bytes: ByteArray): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+
+    /**
+     * 数据源层（openhongguo）的内容密钥形态是 16 字节 AES 密钥的小写十六进制串
+     * （与 ffmpeg -decryption_key 相同）；还原成字节供 [buildResponse] 消费。
+     * 非偶数长度或含非 hex 字符时返回 null。
+     */
+    fun hexToBytes(hex: String): ByteArray? {
+        if (hex.isEmpty() || hex.length % 2 != 0) return null
+        val out = ByteArray(hex.length / 2)
+        for (i in out.indices) {
+            val hi = hex[i * 2].digitToIntOrNull(16) ?: return null
+            val lo = hex[i * 2 + 1].digitToIntOrNull(16) ?: return null
+            out[i] = ((hi shl 4) or lo).toByte()
+        }
+        return out
+    }
 
     /** 从 CDM 请求 JSON 提取 kids，构造与 [contentKey] 配对的 ClearKey 响应；无 kid 返回 null。 */
     fun buildResponse(requestJson: String, contentKey: ByteArray): String? {

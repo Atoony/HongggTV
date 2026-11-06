@@ -10,7 +10,8 @@ import java.util.UUID
 
 /**
  * 本地 ClearKey DRM 回调（票 04）：把 ClearKey CDM 请求中的 kids 与内存中的
- * 内容密钥（spade_a 解出）配对成 W3C 响应，全程无网络请求、密钥不落盘。
+ * 内容密钥（数据源层 openhongguo 本地计算，经 ClearKeyLicense.hexToBytes 还原）
+ * 配对成 W3C 响应，全程无网络请求、密钥不落盘。
  * 样本级 CENC 解密由 media3 + MediaDrm(ClearKey) 完成。
  */
 class LocalClearKeyCallback(private val contentKey: ByteArray) : MediaDrmCallback {

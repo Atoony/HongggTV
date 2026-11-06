@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 // 发布签名配置（票08）：keystore/hgtv-release.properties 不入库，四键齐才启用 hgRelease 签名
@@ -25,6 +26,7 @@ android {
         targetSdk = 34
         versionCode = 100
         versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -56,9 +58,6 @@ android {
     }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources {
@@ -102,9 +101,17 @@ dependencies {
     // 海报加载
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // 数据源层（ADR 0001 换芯）：一切红果数据经此 SDK，锁 0.2.0
+    implementation("io.github.beilunyang:openhongguo:0.2.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+
+    // 票 12 探针：SDK 四连链路的 instrumented test 载体
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
 // 线上探针开关（HGTV_LIVE_PROBE 环境变量会被常驻 daemon 固化，改走 -PhgLive 每次显式传）

@@ -171,8 +171,13 @@ fun SearchPage(
         } else {
             suggestLoading = true
             delay(300)
-            runCatching { suggestions = web.suggestions(query, 10) }
-            runCatching { nameHits = web.nameIndex(query) }
+            // 被取消的旧 effect 不得把新 effect 的加载态提前置 false（票11 评审同型修复对齐）
+            try {
+                suggestions = runCatching { web.suggestions(query, 10) }.getOrDefault(emptyList())
+                nameHits = runCatching { web.nameIndex(query) }.getOrDefault(emptyList())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            }
             suggestLoading = false
         }
     }

@@ -58,4 +58,36 @@ class ClearKeyLicenseTest {
         assertTrue("非 URL 安全字母表", enc.none { it == '+' || it == '/' })
         assertTrue(tricky.contentEquals(Base64.getUrlDecoder().decode(enc)))
     }
+
+    // 票 12：数据源层（openhongguo）内容密钥是 16 字节 AES 密钥的小写 hex 串
+
+    @Test
+    fun `hexToBytes - 32 位小写 hex 还原 16 字节内容密钥`() {
+        val hex = "00112233445566778899aabbccddeeff"
+        val bytes = ClearKeyLicense.hexToBytes(hex)!!
+        assertEquals(16, bytes.size)
+        assertEquals(0x00, bytes[0].toInt() and 0xFF)
+        assertEquals(0xff, bytes[15].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `hexToBytes - 空串奇数长度或非 hex 字符返回 null`() {
+        assertNull(ClearKeyLicense.hexToBytes(""))
+        assertNull(ClearKeyLicense.hexToBytes("abc"))
+        assertNull(ClearKeyLicense.hexToBytes("zz"))
+        assertNull(ClearKeyLicense.hexToBytes("00gg"))
+    }
+
+    @Test
+    fun `SDK 内容密钥全链 - hex 串到合法 ClearKey 响应`() {
+        // SDK 形态（contentKey.key 小写 hex）→ buildResponse 消费 → W3C 响应里 k 配对成功
+        val hex = "3f10a7c2d84b95e60133ad9f6c2b7e40"
+        val keyBytes = ClearKeyLicense.hexToBytes(hex)!!
+        val request = """{"kids":["${b64url(kid)}"],"type":"temporary"}"""
+        val root = JsonParser.parse(ClearKeyLicense.buildResponse(request, keyBytes)!!) as Map<String, Any?>
+        val entry = (root["keys"] as List<*>)[0] as Map<String, Any?>
+        assertEquals(b64url(keyBytes), entry["k"])
+        assertEquals(b64url(kid), entry["kid"])
+        assertEquals("temporary", root["type"])
+    }
 }
