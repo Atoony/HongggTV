@@ -54,23 +54,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.data.PlayerSettingsStore
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
+import com.hgtv.app.domain.Playback
+import com.hgtv.app.domain.StreamException
 import com.hgtv.app.net.HongguoApi
-import com.hgtv.app.player.LocalClearKeyCallback
+import com.hgtv.app.player.CencDecryptDataSourceFactory
 import com.hgtv.app.ui.focusScale
-import com.hgtv.app.player.StreamException
-import com.hgtv.app.player.StreamRepository
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -108,18 +109,18 @@ fun PlayerScreen(
     startEpisode: Int,
     startPositionMs: Long,
     watchedEpisodes: Set<Int>,
-    freeEpisodeCnt: Int = Int.MAX_VALUE,
-    api: HongguoApi,
+    source: OpenhongguoSource,
     watchStore: WatchStore,
     settings: PlayerSettingsStore,
     onExit: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build() }
-    val streamRepo = remember(api) { StreamRepository(api) }
 
     var currentEpisode by rememberSaveable { mutableIntStateOf(startEpisode) }
-    var options by remember { mutableStateOf<List<HongguoApi.StreamOption>>(emptyList()) }
+    var options by remember { mutableStateOf<List<Playback.Line>>(emptyList()) }
+    // 播放级内容密钥（票12 实测：每集独立、集内跨线路共享），明文流为 null
+    var contentKey by remember { mutableStateOf<ByteArray?>(null) }
     var urlIndex by remember { mutableIntStateOf(0) }
     var overlay by remember { mutableStateOf(OverlayState.NONE) }
     var error by remember { mutableStateOf<PlayError?>(null) }
@@ -142,7 +143,7 @@ fun PlayerScreen(
     val pauseFocus = remember { FocusRequester() }
     val retryFocus = remember { FocusRequester() }
 
-    fun pickOption(): HongguoApi.StreamOption? =
+    fun pickOption(): Playback.Line? =
         options.filter { it.quality <= preferredQuality }.maxByOrNull { it.quality } ?: options.maxByOrNull { it.quality }
 
     fun prepareAt(positionMs: Long) {
@@ -151,37 +152,29 @@ fun PlayerScreen(
             return
         }
         val uri = option.urls[urlIndex.coerceIn(0, option.urls.size - 1)]
-        val webLine = uri.contains("hongguoduanju.com")
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent("com.phoenix.read/73532")
-            // 票09 第 8 项（minireel source_config:98-107）：Referer/Origin 同源 + identity
-            // 禁透明 gzip（Range/CDN 友好）
+            // 票09 第 8 项（minireel source_config:98-107）：App 通道 CDN 头 Referer/Origin 同源；
+            // 禁透明 gzip（Range/CDN 友好）。SDK 直链同 App 通道 CDN，沿用。
             .setDefaultRequestProperties(
-                mapOf("Accept-Encoding" to "identity") +
-                    if (webLine) mapOf(
-                        "Referer" to "https://hongguoduanju.com/",
-                        "Origin" to "https://hongguoduanju.com",
-                    ) else mapOf(
-                        "Referer" to "https://novel.snssdk.com/",
-                        "Origin" to "https://novel.snssdk.com",
-                    )
+                mapOf(
+                    "Accept-Encoding" to "identity",
+                    "Referer" to "https://novel.snssdk.com/",
+                    "Origin" to "https://novel.snssdk.com",
+                )
             )
             .setConnectTimeoutMs(8_000)
             .setReadTimeoutMs(8_000)
             .setAllowCrossProtocolRedirects(true)
-        val key = option.cencKey
-        // CENC 流：本地 ClearKey DRM session 做样本级解密（密钥仅内存，每次 open 重设）；
-        // 明文流（网页直链兜底）：普通 DataSource，不建 DRM 会话。
-        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
-        val mediaItem = if (key != null) {
-            sourceFactory.setDrmSessionManagerProvider { LocalClearKeyCallback.sessionManager(key) }
-            MediaItem.Builder()
-                .setUri(uri)
-                .setDrmConfiguration(MediaItem.DrmConfiguration.Builder(C.CLEARKEY_UUID).build())
-                .build()
-        } else {
-            MediaItem.fromUri(uri)
-        }
+        val key = contentKey
+        // CENC 流：样本级 AES-CTR 解密在 DataSource 层完成——openhongguo 直链是无 pssh 的
+        // progressive CENC MP4（tenc 还是旧布局），media3 progressive 不支持 CENC、直链又无
+        // HLS/DASH 变体，票13 改本地解密后按明文渐进播放（moov 只读解析、逐字节等长同位）。
+        // 明文流：DataSource 原样透传。
+        val dataFactory: DataSource.Factory =
+            if (key != null) CencDecryptDataSourceFactory(httpFactory, key) else httpFactory
+        val sourceFactory = DefaultMediaSourceFactory(dataFactory)
+        val mediaItem = MediaItem.fromUri(uri)
         val source = sourceFactory.createMediaSource(mediaItem)
         player.setMediaSource(source, positionMs)
         player.prepare()
@@ -199,16 +192,14 @@ fun PlayerScreen(
         lastLoadedEpisode = currentEpisode
         reconnects = 0
         urlIndex = 0
-        // 网页兜底详情只带免费集直链：非免费集直接走错误页，不空跑取流重试
-        if (ep.index > freeEpisodeCnt) {
-            buffering = false
-            error = PlayError("E-1003", "第${ep.index}集为非免费集，当前线路仅支持前 $freeEpisodeCnt 集")
-            return@LaunchedEffect
-        }
+        // 票13：网页兜底时代的免费集预检随旧链退役——线路可用性以数据源（SDK）为唯一真相，
+        // 取不到的错误由 StreamException 走错误页
         buffering = true
         error = null
         try {
-            options = streamRepo.fetchStreamsWithRetry(ep.videoId)
+            val playback = source.playback(ep.videoId)
+            options = playback.lines
+            contentKey = playback.contentKey
             prepareAt(startAt)
         } catch (e: StreamException) {
             error = PlayError(e.code, e.message ?: "取流失败")

@@ -13,8 +13,9 @@ import javax.crypto.spec.SecretKeySpec
  * CENC 整流解密 DataSource（已退出播放链，保留供探针/形态验证用）。
  *
  * 2026-10-22 票 04 改道：红果流实测为 sample 级 CENC（moov/senc/saio），
- * 全流 CTR 变换会破坏明文 box 头，本类不再用于播放；样本级解密改由
- * [LocalClearKeyCallback] + media3 ClearKey DRM session 完成。
+ * 全流 CTR 变换会破坏明文 box 头，本类不再用于播放。
+ * 2026-11-07 票 13 定稿：样本级解密由 [CencDecryptDataSource] 本地 AES-CTR 完成
+ * （直链无 pssh，media3 progressive 不支持 CENC；ClearKey DRM 路线随 ClearKeyDrm 一并退场）。
  * zeroIv 模式仅当流为"整文件连续 CTR"时正确（探针用其验证形态假设）。
  */
 class CencDataSource(

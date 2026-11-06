@@ -1,5 +1,6 @@
 package com.hgtv.app.player
 
+import com.hgtv.app.domain.contentKeyFromHex
 import com.hgtv.app.net.JsonParser
 import com.hgtv.app.net.JVal
 import java.util.Base64
@@ -21,18 +22,9 @@ object ClearKeyLicense {
     /**
      * 数据源层（openhongguo）的内容密钥形态是 16 字节 AES 密钥的小写十六进制串
      * （与 ffmpeg -decryption_key 相同）；还原成字节供 [buildResponse] 消费。
-     * 非偶数长度或含非 hex 字符时返回 null。
+     * 票13 起单一实现在 domain 层（contentKeyFromHex），此处保留入口供探针/测试复用。
      */
-    fun hexToBytes(hex: String): ByteArray? {
-        if (hex.isEmpty() || hex.length % 2 != 0) return null
-        val out = ByteArray(hex.length / 2)
-        for (i in out.indices) {
-            val hi = hex[i * 2].digitToIntOrNull(16) ?: return null
-            val lo = hex[i * 2 + 1].digitToIntOrNull(16) ?: return null
-            out[i] = ((hi shl 4) or lo).toByte()
-        }
-        return out
-    }
+    fun hexToBytes(hex: String): ByteArray? = contentKeyFromHex(hex)
 
     /** 从 CDM 请求 JSON 提取 kids，构造与 [contentKey] 配对的 ClearKey 响应；无 kid 返回 null。 */
     fun buildResponse(requestJson: String, contentKey: ByteArray): String? {

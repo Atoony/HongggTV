@@ -83,6 +83,8 @@ fun AppRoot() {
     val context = androidx.compose.ui.platform.LocalContext.current
     // 票09 第 7 项：identity 每次安装生成后持久化（filesDir/hg_identity.txt），重启不换
     val api = remember { com.hgtv.app.net.HongguoApi(com.hgtv.app.net.HongguoDevice.loadOrNew(context.filesDir)) }
+    // 数据源层（ADR 0001）：播放链经 openhongguo SDK，App 级单例（元数据票14 切换）
+    val ohgSource = remember { com.hgtv.app.data.OpenhongguoSource(context) }
     val feed = remember { com.hgtv.app.net.HongguoFeed(api) }
     val web = remember { com.hgtv.app.net.HongguoWeb() }
     val watchStore = remember { com.hgtv.app.data.WatchStore(context) }
@@ -225,8 +227,7 @@ fun AppRoot() {
                 startEpisode = episode,
                 startPositionMs = playResumeMs,
                 watchedEpisodes = entry?.let { (1 until it.episode).toSet() } ?: emptySet(),
-                freeEpisodeCnt = data.freeEpisodeCnt,
-                api = api,
+                source = ohgSource,
                 watchStore = watchStore,
                 settings = playerSettings,
                 onExit = {

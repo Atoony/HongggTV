@@ -65,7 +65,9 @@ android {
         }
     }
     testOptions {
-        unitTests.isReturnDefaultValues = false
+        // media3 DataSpec 构造依赖 android.net.Uri.parse（返回 null 即可），
+        // 其余单测均为纯 JVM 逻辑，不受默认值化影响
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -107,6 +109,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    // JVM 单测构造 media3 DataSpec 需要非空 android.net.Uri（mockable jar 全返 null）
+    testImplementation("org.mockito:mockito-core:5.17.0")
 
     // 票 12 探针：SDK 四连链路的 instrumented test 载体
     androidTestImplementation("junit:junit:4.13.2")

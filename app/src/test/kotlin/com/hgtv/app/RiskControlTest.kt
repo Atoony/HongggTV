@@ -3,7 +3,6 @@ package com.hgtv.app
 import com.hgtv.app.net.HongguoApi
 import com.hgtv.app.net.HongguoDevice
 import com.hgtv.app.net.HongguoIdentity
-import com.hgtv.app.player.StreamRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -97,22 +96,6 @@ class RiskControlTest {
         } catch (e: HongguoApi.ApiException) {
             assertTrue(e.message!!.contains("20MB"))
         }
-    }
-
-    // ---------- 第 5 项：重试分类矩阵 ----------
-
-    @Test
-    fun `仅 408 429 与 5xx 可重试`() {
-        assertTrue(StreamRepository.retriable(HongguoApi.ApiException("e", 408)))
-        assertTrue(StreamRepository.retriable(HongguoApi.ApiException("e", 429)))
-        assertTrue(StreamRepository.retriable(HongguoApi.ApiException("e", 500)))
-        assertTrue(StreamRepository.retriable(HongguoApi.ApiException("e", 503)))
-        assertFalse(StreamRepository.retriable(HongguoApi.ApiException("e", 302)))   // 重定向
-        assertFalse(StreamRepository.retriable(HongguoApi.ApiException("e", 200)))   // 空响应
-        assertFalse(StreamRepository.retriable(HongguoApi.ApiException("e", 403)))
-        assertFalse(StreamRepository.retriable(HongguoApi.ApiException("取流响应非 JSON"))) // 解析失败
-        assertFalse(StreamRepository.retriable(HongguoApi.ChallengeException("CF", 403)))
-        assertTrue(StreamRepository.retriable(java.io.IOException("connect timed out"))) // 网络层
     }
 
     // ---------- 第 9 项：回显防呆 ----------

@@ -1,7 +1,6 @@
 package com.hgtv.app
 
 import com.hgtv.app.net.HongguoWeb
-import com.hgtv.app.player.StreamRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,13 +33,5 @@ class WebPlayerDetailTest {
             thrown = true
         }
         assertTrue(thrown)
-    }
-
-    @Test
-    fun `网页兜底线路 URL 形状`() {
-        val opt = StreamRepository.webFallbackOption("7694655440692448281")
-        assertEquals("https://hongguoduanju.com/video/public/7694655440692448281/360p.mp4", opt.urls.single())
-        assertEquals(360, opt.quality)
-        assertEquals(null, opt.cencKey)
     }
 }
