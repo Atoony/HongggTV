@@ -74,19 +74,15 @@ fun AppRoot() {
     var current by rememberSaveable { mutableStateOf(NavDest.HOME) }
     // 覆盖层 1：详情页（seriesId）；覆盖层 2：播放器
     var detailSeriesId by rememberSaveable { mutableStateOf<String?>(null) }
-    var detailData by remember { mutableStateOf<com.hgtv.app.net.HongguoApi.SeriesDetail?>(null) }
+    var detailData by remember { mutableStateOf<com.hgtv.app.domain.SeriesDetail?>(null) }
     var detailError by remember { mutableStateOf<String?>(null) }
     var playEpisode by remember { mutableStateOf<Int?>(null) }
     var playResumeMs by remember { mutableStateOf(0L) }
     var autoResume by remember { mutableStateOf<com.hgtv.app.data.WatchEntry?>(null) } // 历史/首页续播：加载完详情直接进播放
     val contentRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
-    // 票09 第 7 项：identity 每次安装生成后持久化（filesDir/hg_identity.txt），重启不换
-    val api = remember { com.hgtv.app.net.HongguoApi(com.hgtv.app.net.HongguoDevice.loadOrNew(context.filesDir)) }
-    // 数据源层（ADR 0001）：播放链经 openhongguo SDK，App 级单例（元数据票14 切换）
+    // 数据源层（ADR 0001）：一切红果数据经 openhongguo SDK，App 级单例（票13 播放链 + 票14 元数据）
     val ohgSource = remember { com.hgtv.app.data.OpenhongguoSource(context) }
-    val feed = remember { com.hgtv.app.net.HongguoFeed(api) }
-    val web = remember { com.hgtv.app.net.HongguoWeb() }
     val watchStore = remember { com.hgtv.app.data.WatchStore(context) }
     val playerSettings = remember { com.hgtv.app.data.PlayerSettingsStore(context) }
     val scope = remember { kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO) }
@@ -115,14 +111,11 @@ fun AppRoot() {
         detailData = null
         detailError = null
         try {
-            detailData = api.fetchDetail(sid)
+            detailData = ohgSource.seriesDetail(sid)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // 取消直抛：detailSeriesId 切换不误报"加载失败"（票14 评审）
         } catch (e: Exception) {
-            // App 通道被风控时兜底：网页播放页带全集 vid_list（游客可访问）
-            try {
-                detailData = web.playerDetail(sid)
-            } catch (e2: Exception) {
-                detailError = "${e.message}（网页兜底也失败：${e2.message}）"
-            }
+            detailError = e.message ?: "详情加载失败"
         }
     }
 
@@ -164,7 +157,7 @@ fun AppRoot() {
         ) {
             when (current) {
                 NavDest.HOME -> HomePage(
-                    feed = feed,
+                    source = ohgSource,
                     history = history,
                     historyReady = historyState != null,
                     // 详情/播放覆盖层打开时首页不抢焦点（继续观看首卡落位会打断播放器按键）
@@ -174,8 +167,7 @@ fun AppRoot() {
                     onOpenHistory = { current = NavDest.HISTORY },
                 )
                 NavDest.SEARCH -> SearchPage(
-                    web = web,
-                    feed = feed,
+                    source = ohgSource,
                     onOpenDetail = { detailSeriesId = it },
                 )
                 NavDest.HISTORY -> HistoryPage(

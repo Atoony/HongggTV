@@ -1,5 +1,7 @@
 package com.hgtv.app
 
+import com.hgtv.app.domain.chineseSeason
+import com.hgtv.app.domain.seasonOf
 import com.hgtv.app.net.HongguoWeb
 import com.hgtv.app.net.WebDrama
 import kotlinx.coroutines.runBlocking
@@ -7,7 +9,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 票06（SPEC §6.3）：季号解析 / 缺季补全（注入名称索引）/ 同系列相邻排序。 */
+/** 票06（SPEC §6.3）：季号解析 / 缺季补全（注入名称索引）/ 同系列相邻排序。
+ *  票14：seasonOf/chineseSeason 迁 domain 垫层（旧链 web 搜索逻辑测试随票15 退役）。 */
 class SeasonLogicTest {
 
     private val web = HongguoWeb()
@@ -17,31 +20,31 @@ class SeasonLogicTest {
         remark = "", releaseStatus = "finished", categories = emptyList(), heat = "", score = "",
     )
 
-    // ---------- seasonOf（特征固化） ----------
+    // ---------- seasonOf（特征固化，domain） ----------
 
     @Test
     fun `标题季号解析 - 中文数字与阿拉伯数字与部`() {
-        HongguoWeb.seasonOf("战神第二季").let { (b, s, u, l) ->
+        seasonOf("战神第二季").let { (b, s, u, l) ->
             assertEquals("战神", b); assertEquals(2, s); assertEquals("季", u); assertEquals("二", l)
         }
-        assertEquals(3, HongguoWeb.seasonOf("重生第3季").season)
-        assertEquals(1, HongguoWeb.seasonOf("先婚后爱第一部").season)
-        assertEquals(0, HongguoWeb.seasonOf("无双神龙").season)
+        assertEquals(3, seasonOf("重生第3季").season)
+        assertEquals(1, seasonOf("先婚后爱第一部").season)
+        assertEquals(0, seasonOf("无双神龙").season)
     }
 
     @Test
     fun `季号范围 1-200 之外视为无季`() {
-        assertEquals(200, HongguoWeb.seasonOf("某剧第二百季").season)
-        assertEquals(0, HongguoWeb.seasonOf("某剧第二百零一季").season)
-        assertEquals(0, HongguoWeb.seasonOf("某剧第0季").season)
+        assertEquals(200, seasonOf("某剧第二百季").season)
+        assertEquals(0, seasonOf("某剧第二百零一季").season)
+        assertEquals(0, seasonOf("某剧第0季").season)
     }
 
     @Test
     fun `chineseSeason 数字转中文`() {
-        assertEquals("二", HongguoWeb.chineseSeason(2))
-        assertEquals("十", HongguoWeb.chineseSeason(10))
-        assertEquals("二十一", HongguoWeb.chineseSeason(21))
-        assertEquals("一百零五", HongguoWeb.chineseSeason(105))
+        assertEquals("二", chineseSeason(2))
+        assertEquals("十", chineseSeason(10))
+        assertEquals("二十一", chineseSeason(21))
+        assertEquals("一百零五", chineseSeason(105))
     }
 
     // ---------- completeSeasons（注入名称索引） ----------

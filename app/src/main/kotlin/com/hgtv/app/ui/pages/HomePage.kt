@@ -42,8 +42,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import coil.compose.AsyncImage
+import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.data.WatchEntry
-import com.hgtv.app.net.HongguoFeed
+import com.hgtv.app.domain.SeriesCard
 import com.hgtv.app.ui.focusScale
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.rememberRowPrefetch
@@ -64,7 +65,7 @@ const val DEBUG_SERIES_ID = "7688352674999176254"
  *  2026-10-31 "为你推荐"行移除：票10 后与热播榜同源（web 榜单分页），两行头部完全重复。 */
 @Composable
 fun HomePage(
-    feed: HongguoFeed,
+    source: OpenhongguoSource,
     history: List<WatchEntry>,
     historyReady: Boolean,
     active: Boolean,
@@ -73,7 +74,7 @@ fun HomePage(
     onOpenHistory: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var rankItems by remember { mutableStateOf<List<HongguoFeed.RankItem>?>(null) }
+    var rankItems by remember { mutableStateOf<List<SeriesCard>?>(null) }
     var rankError by remember { mutableStateOf<String?>(null) }
 
     // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落热播榜首卡；每会话仅一次
@@ -83,7 +84,7 @@ fun HomePage(
 
     LaunchedEffect(Unit) {
         try {
-            rankItems = feed.hotDramaRank()
+            rankItems = source.hotRank()
         } catch (e: Exception) {
             android.util.Log.w("HgHome", "热播榜失败", e)
             rankError = e.message ?: "热播榜加载失败"

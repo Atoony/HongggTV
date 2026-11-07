@@ -69,7 +69,7 @@ import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
 import com.hgtv.app.domain.Playback
 import com.hgtv.app.domain.StreamException
-import com.hgtv.app.net.HongguoApi
+import com.hgtv.app.domain.Episode
 import com.hgtv.app.player.CencDecryptDataSourceFactory
 import com.hgtv.app.ui.focusScale
 import com.hgtv.app.ui.theme.Bg
@@ -105,7 +105,7 @@ fun PlayerScreen(
     title: String,
     cover: String,
     episodeCount: Int,
-    episodes: List<HongguoApi.Episode>,
+    episodes: List<Episode>,
     startEpisode: Int,
     startPositionMs: Long,
     watchedEpisodes: Set<Int>,
@@ -183,10 +183,10 @@ fun PlayerScreen(
 
     // 装载（初次 + 换集 + 错误重试统一走 loadToken/currentEpisode）
     LaunchedEffect(currentEpisode, loadToken) {
-        val ep = episodes.firstOrNull { it.index == currentEpisode } ?: return@LaunchedEffect
+        val ep = episodes.firstOrNull { it.number == currentEpisode } ?: return@LaunchedEffect
         val firstLoad = lastLoadedEpisode == -1
         // 票05：换集/重试期间 OSD"正在切换…"，READY 后换成"第N集"；初次进播放器直接报集号
-        osd = if (firstLoad) "第${ep.index}集" else "正在切换…"
+        osd = if (firstLoad) "第${ep.number}集" else "正在切换…"
         switchOsdPending = !firstLoad
         val startAt = resolveStartMs(currentEpisode, lastLoadedEpisode, startEpisode, startPositionMs, resumeMs)
         lastLoadedEpisode = currentEpisode
@@ -197,7 +197,7 @@ fun PlayerScreen(
         buffering = true
         error = null
         try {
-            val playback = source.playback(ep.videoId)
+            val playback = source.playback(ep.episodeId)
             options = playback.lines
             contentKey = playback.contentKey
             prepareAt(startAt)
@@ -592,7 +592,7 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
 
 @Composable
 private fun EpisodeOverlay(
-    episodes: List<HongguoApi.Episode>,
+    episodes: List<Episode>,
     current: Int,
     watched: Set<Int>,
     onPick: (Int) -> Unit,
@@ -609,19 +609,19 @@ private fun EpisodeOverlay(
                 TabButton("$from-$to", tab == selectedTab) { selectedTab = tab }
             }
         }
-        val gridEpisodes = episodes.filter { (it.index - 1) / 50 == selectedTab }
+        val gridEpisodes = episodes.filter { (it.number - 1) / 50 == selectedTab }
         LazyVerticalGrid(
             columns = GridCells.Fixed(8),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(gridEpisodes, key = { it.videoId }) { ep ->
+            items(gridEpisodes, key = { it.episodeId }) { ep ->
                 val look = when {
-                    ep.index == current -> ChipLook.CURRENT
-                    watched.contains(ep.index) -> ChipLook.WATCHED
+                    ep.number == current -> ChipLook.CURRENT
+                    watched.contains(ep.number) -> ChipLook.WATCHED
                     else -> ChipLook.NORMAL
                 }
-                ChipOverlay(ep.index, look) { onPick(ep.index) }
+                ChipOverlay(ep.number, look) { onPick(ep.number) }
             }
         }
     }

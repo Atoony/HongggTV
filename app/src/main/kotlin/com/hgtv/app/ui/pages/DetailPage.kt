@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.hgtv.app.net.HongguoApi
+import com.hgtv.app.domain.SeriesDetail
 import com.hgtv.app.ui.focusScale
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.theme.Bg
@@ -73,7 +73,7 @@ fun interface PlayRequestListener {
 @Composable
 fun DetailPage(
     seriesId: String,
-    detail: HongguoApi.SeriesDetail,
+    detail: SeriesDetail,
     watchedEpisodes: Set<Int>,
     resumeEpisode: Int = 1,
     onPlayRequest: PlayRequestListener,
@@ -86,7 +86,7 @@ fun DetailPage(
 
 @Composable
 private fun DetailContent(
-    detail: HongguoApi.SeriesDetail,
+    detail: SeriesDetail,
     resume: Int,
     watched: Set<Int>,
     onPlayRequest: PlayRequestListener,
@@ -134,7 +134,7 @@ private fun DetailContent(
                 )
             }
             Text(
-                "状态：" + if (detail.releaseStatus == "finished") "已完结" else "连载中",
+                "状态：" + if (detail.finished) "已完结" else "连载中",
                 style = TextStyle(fontSize = 14.sp, color = OnBgVariant),
             )
             if (detail.heat.isNotEmpty()) {
@@ -160,7 +160,7 @@ private fun DetailContent(
                     EpisodeTab("$from-$to", tab == selectedTab) { selectedTab = tab }
                 }
             }
-            val gridEpisodes = detail.episodes.filter { (it.index - 1) / EPISODE_GROUP == selectedTab }
+            val gridEpisodes = detail.episodes.filter { (it.number - 1) / EPISODE_GROUP == selectedTab }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -168,14 +168,14 @@ private fun DetailContent(
                 contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(gridEpisodes, key = { it.videoId }) { ep ->
+                items(gridEpisodes, key = { it.episodeId }) { ep ->
                     val state = when {
-                        ep.index == resume -> ChipState.CURRENT
-                        watched.contains(ep.index) -> ChipState.WATCHED
+                        ep.number == resume -> ChipState.CURRENT
+                        watched.contains(ep.number) -> ChipState.WATCHED
                         else -> ChipState.NORMAL
                     }
-                    EpisodeChip(index = ep.index, state = state) {
-                        onPlayRequest.onPlay(detail.seriesId, ep.index)
+                    EpisodeChip(index = ep.number, state = state) {
+                        onPlayRequest.onPlay(detail.seriesId, ep.number)
                     }
                 }
             }

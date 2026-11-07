@@ -56,10 +56,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.hgtv.app.net.HongguoFeed
-import com.hgtv.app.net.HongguoWeb
-import com.hgtv.app.net.Suggestion
-import com.hgtv.app.net.WebDrama
+import com.hgtv.app.data.OpenhongguoSource
+import com.hgtv.app.domain.SeriesCard
+import com.hgtv.app.domain.Suggestion
+import com.hgtv.app.domain.seasonOf
 import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.KeySurface
@@ -106,7 +106,7 @@ object SearchHistory {
 /** 中列首焦区判定（票11 焦点流）：联想 > 直达 > 拼音；全空返回 null（中列无候选，RIGHT 走默认焦点搜索）。 */
 internal fun firstCandidateRow(
     suggestions: List<Suggestion>,
-    nameHits: List<WebDrama>,
+    nameHits: List<SeriesCard>,
     pinyinCandidates: List<String>,
 ): Int? = when {
     suggestions.isNotEmpty() -> 0
@@ -115,24 +115,11 @@ internal fun firstCandidateRow(
     else -> null
 }
 
-/** 右列热门词（降级源=热播榜标题，侦察结论见票11）：滤空白、同名去重、保序，截 max 条。 */
-internal fun hotWordsFromRank(ranks: List<HongguoFeed.RankItem>, max: Int = 10): List<String> {
-    val seen = HashSet<String>()
-    val out = ArrayList<String>()
-    for (r in ranks) {
-        val title = r.title.trim()
-        if (title.isEmpty() || !seen.add(title)) continue
-        out.add(title)
-        if (out.size >= max) break
-    }
-    return out
-}
-
-/** 搜索页（票 11 三列改版，B 站 TV 式）：左列键盘输入 / 中列联想直达 / 右列历史热门 + 结果网格。 */
+/** 搜索页（票 11 三列改版，B 站 TV 式）：左列键盘输入 / 中列联想直达 / 右列历史热门 + 结果网格。
+ *  票14 换芯：三列取数整体切 openhongguo SDK（热门词换 hotSearch 真源），交互零改动。 */
 @Composable
 fun SearchPage(
-    web: HongguoWeb,
-    feed: HongguoFeed,
+    source: OpenhongguoSource,
     onOpenDetail: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -140,20 +127,20 @@ fun SearchPage(
     var query by remember { mutableStateOf("") }
     var pinyinMode by remember { mutableStateOf(true) } // 拼 / EN
     var suggestions by remember { mutableStateOf<List<Suggestion>>(emptyList()) }
-    var nameHits by remember { mutableStateOf<List<WebDrama>>(emptyList()) }
+    var nameHits by remember { mutableStateOf<List<SeriesCard>>(emptyList()) }
     var suggestLoading by remember { mutableStateOf(false) } // 联想在飞：中列区分「加载中/无候选」
     var history by remember { mutableStateOf(SearchHistory.load(ctx)) }
     var hotWords by remember { mutableStateOf<List<String>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
-    var results by remember { mutableStateOf<List<WebDrama>?>(null) } // null=未搜索；返回键盘保留
+    var results by remember { mutableStateOf<List<SeriesCard>?>(null) } // null=未搜索；返回键盘保留
     var resultWord by remember { mutableStateOf("") }
     var showResults by remember { mutableStateOf(false) }
     var emptyNotice by remember { mutableStateOf("") } // 空态提示，显示于键盘态中列（SPEC：空态焦点回键盘）
 
-    // 右列热门词：降级源=热播榜 top 标题（票11 侦察结论：web 域无热搜词榜）；失败静默隐藏
+    // 右列热门词：hotSearch 真源（票14 换芯，Q6）；失败静默隐藏
     LaunchedEffect(Unit) {
         hotWords = try {
-            hotWordsFromRank(feed.hotDramaRank())
+            source.hotWords()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -171,13 +158,17 @@ fun SearchPage(
         } else {
             suggestLoading = true
             delay(300)
-            // 被取消的旧 effect 不得把新 effect 的加载态提前置 false（票11 评审同型修复对齐）
-            try {
-                suggestions = runCatching { web.suggestions(query, 10) }.getOrDefault(emptyList())
-                nameHits = runCatching { web.nameIndex(query) }.getOrDefault(emptyList())
+            // 一次 suggest 拆联想+直达（票14：旧链两发并一发）；取消直抛——被取消的旧
+            // effect 不得把新 effect 的候选/加载态提前覆盖（票11 评审同型修复对齐）
+            val columns = try {
+                source.suggest(query)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: Exception) {
+                null // 网络失败静默清空候选
             }
+            suggestions = columns?.words ?: emptyList()
+            nameHits = columns?.directs ?: emptyList()
             suggestLoading = false
         }
     }
@@ -201,18 +192,19 @@ fun SearchPage(
     LaunchedEffect(searching, resultWord) {
         if (!searching) return@LaunchedEffect
         try {
-            results = web.search(resultWord).dramas
+            results = source.search(resultWord)
             if (results.isNullOrEmpty()) {
                 showResults = false // 空态：回键盘 + 候选区居中提示 + 删词建议
                 emptyNotice = "没有找到「$resultWord」相关短剧"
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // 取消直抛：不写错误态、不关新搜索的 loading（票14 评审）
         } catch (e: Exception) {
             results = emptyList()
             showResults = false
             emptyNotice = "搜索暂不可用，稍后再试"
-        } finally {
-            searching = false
         }
+        searching = false
     }
 
     // 遥控返回：结果态先回键盘（保留输入与结果），键盘态交回上级返回链
@@ -267,7 +259,7 @@ private fun SearchBoard(
     query: String,
     pinyinMode: Boolean,
     suggestions: List<Suggestion>,
-    nameHits: List<WebDrama>,
+    nameHits: List<SeriesCard>,
     pinyinCandidates: List<String>,
     suggestLoading: Boolean,
     history: List<String>,
@@ -383,7 +375,7 @@ private fun MiddleColumn(
     query: String,
     emptyNotice: String,
     suggestions: List<Suggestion>,
-    nameHits: List<WebDrama>,
+    nameHits: List<SeriesCard>,
     pinyinCandidates: List<String>,
     suggestLoading: Boolean,
     firstRow: Int?,
@@ -423,7 +415,7 @@ private fun MiddleColumn(
             ) {
                 candidateSection(
                     label = "联想",
-                    entries = suggestions.map { it.name to "" },
+                    entries = suggestions.map { it.text to "" },
                     firstFocus = if (firstRow == 0) firstCandidateFocus else null,
                     onPick = onPickSuggestion,
                 )
@@ -444,11 +436,11 @@ private fun MiddleColumn(
     }
 }
 
-/** 剧卡集数角标：episode_cnt 优先退 remark，缺「集」后缀则补——中列直达与结果网格共用，避免两套格式（评审#6）。 */
-internal fun episodeBadge(d: WebDrama): String =
-    d.episodeCnt.ifEmpty { d.remark }.let { if (it.isNotEmpty() && !it.endsWith("集")) "${it}集" else it }
+/** 剧卡集数角标：总集数>0 → "N集"；中列直达与结果网格共用一套格式（评审#6 精神保留）。 */
+internal fun episodeBadge(c: SeriesCard): String =
+    if (c.episodeCount > 0) "${c.episodeCount}集" else ""
 
-/** 中列直达展示上限（nameIndex 最多回 50 条，不截会把拼音区挤出屏幕外）。 */
+/** 中列直达展示上限（不截会把拼音区挤出屏幕外）。 */
 private const val NAME_HITS_SHOWN = 10
 
 private fun LazyListScope.candidateSection(
@@ -469,7 +461,7 @@ private fun LazyListScope.candidateSection(
     }
 }
 
-/** 右列：搜索历史（LRU 竖排 + 清空）+ 热门（热播榜标题降级，票11 侦察结论）。 */
+/** 右列：搜索历史（LRU 竖排 + 清空）+ 热门（hotSearch 真源，票14 换芯）。 */
 @Composable
 private fun RightColumn(
     history: List<String>,
@@ -659,7 +651,7 @@ private fun androidx.compose.foundation.layout.RowScope.SearchKey(onFocusGained:
 private fun ResultGrid(
     word: String,
     loading: Boolean,
-    dramas: List<WebDrama>,
+    dramas: List<SeriesCard>,
     onOpenDetail: (String) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -693,7 +685,7 @@ private fun ResultGrid(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(dramas, key = { _, it -> it.seriesId }) { index, d ->
-                    val season = HongguoWeb.seasonOf(d.title).season
+                    val season = seasonOf(d.title).season
                     PosterCard(
                         title = d.title,
                         badge = episodeBadge(d),

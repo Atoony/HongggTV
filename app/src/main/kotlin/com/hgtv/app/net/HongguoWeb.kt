@@ -1,5 +1,7 @@
 package com.hgtv.app.net
 
+import com.hgtv.app.domain.chineseSeason
+import com.hgtv.app.domain.seasonOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -37,7 +39,6 @@ class HongguoWeb(
         private val WORD_TYPE_WHITELIST = setOf(
             "short_play_name", "short_play_category", "common_query", "actor_name", "short_play_actor",
         )
-        private val SEASON_SUFFIX = Regex("第\\s*([0-9零〇一二两兩三四五六七八九十百]+)\\s*([季部])[\\p{P}\\s]*$")
         private val NUMERIC_ID = Regex("^\\d{10,25}$")
         private const val SEASON_QUERIES = 32
         private const val SEASON_BUDGET_MS = 25_000L
@@ -73,75 +74,8 @@ class HongguoWeb(
             return if (sb.isEmpty()) text.trim().lowercase() else sb.toString()
         }
 
-        /** 标题季号解析：(base, season, unit, label)；无季返回 ("",0,"","") */
-        internal fun seasonOf(title: String): SeasonInfo {
-            val t = Normalizer.normalize(title.trim(), Normalizer.Form.NFKC)
-            val match = SEASON_SUFFIX.find(t) ?: return SeasonInfo("", 0, "", "")
-            val base = t.substring(0, match.range.first).trimEnd { it.isWhitespace() || !it.isLetterOrDigit() }
-            val label = match.groupValues[1]
-            val unit = match.groupValues[2]
-            val number = parseCnNumber(label) ?: return SeasonInfo("", 0, "", "")
-            if (base.isEmpty() || number < 1 || number > 200) return SeasonInfo("", 0, "", "")
-            return SeasonInfo(base, number, unit, label)
-        }
-
-        private fun parseCnNumber(label: String): Int? {
-            label.toIntOrNull()?.let { return it }
-            val digits = mapOf(
-                '零' to 0, '〇' to 0, '一' to 1, '二' to 2, '两' to 2, '兩' to 2,
-                '三' to 3, '四' to 4, '五' to 5, '六' to 6, '七' to 7, '八' to 8, '九' to 9,
-            )
-            if (!label.any { it == '十' || it == '百' }) {
-                var n = 0
-                for (c in label) {
-                    val v = digits[c] ?: return null
-                    n = n * 10 + v
-                    if (n > 200) return null
-                }
-                return n
-            }
-            var digit = 0
-            var previous = 1000
-            var number = 0
-            for (c in label) {
-                val v = digits[c]
-                if (v != null) {
-                    digit = digit * 10 + v
-                    continue
-                }
-                val unitVal = when (c) {
-                    '十' -> 10
-                    '百' -> 100
-                    else -> return null
-                }
-                if (unitVal >= previous || digit > 9) return null
-                number += maxOf(digit, 1) * unitVal
-                digit = 0
-                previous = unitVal
-            }
-            return number + digit
-        }
-
-        internal fun chineseSeason(number: Int): String {
-            val digits = "零一二三四五六七八九"
-            if (number < 10) return digits[number].toString()
-            if (number < 100) {
-                var prefix = ""
-                if (number >= 20) prefix = digits[number / 10].toString()
-                prefix += "十"
-                if (number % 10 != 0) prefix += digits[number % 10]
-                return prefix
-            }
-            var prefix = digits[number / 100].toString() + "百"
-            val rest = number % 100
-            if (rest == 0) return prefix
-            prefix += when {
-                rest < 10 -> "零"
-                rest < 20 -> "一"
-                else -> ""
-            }
-            return prefix + chineseSeason(rest)
-        }
+        /** 标题季号解析（seasonOf/chineseSeason/parseCnNumber）已迁 domain/SeasonTitle.kt（票14）：
+         *  本类内部（completeSeasons/nextQuery/sortSeasonsAdjacent）经顶部 import 继续使用。 */
     }
 
     private suspend fun httpGet(url: String, referer: String, timeoutMs: Int = 12_000): Pair<Int, ByteArray> =
@@ -545,7 +479,7 @@ class HongguoWeb(
         return out
     }
 
-    data class SeasonInfo(val base: String, val season: Int, val unit: String, val label: String)
+    // SeasonInfo 已迁 domain/SeasonTitle.kt（票14）
 
     private fun goEscapeQuery(s: String): String =
         s.toByteArray(Charsets.UTF_8).joinToString("") { b ->
