@@ -117,8 +117,3 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
-
-// 线上探针开关（HGTV_LIVE_PROBE 环境变量会被常驻 daemon 固化，改走 -PhgLive 每次显式传）
-tasks.withType<Test>().configureEach {
-    if (project.hasProperty("hgLive")) environment("HGTV_LIVE_PROBE", "1")
-}

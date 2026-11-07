@@ -1,8 +1,8 @@
-package com.hgtv.app.net
+package com.hgtv.app.json
 
 /**
- * 极简 JSON 值构造 + 序列化。手写以保证签名字节与发送字节完全一致，
- * 且 JVM 单元测试可用（Android stub 的 org.json 不可用）。
+ * 极简 JSON 值构造 + 序列化（JVM 单元测试可用，Android stub 的 org.json 不可用）。
+ * 票15 从 net/ 迁出：现为通用 JSON 基础设施，WatchStore 落盘序列化使用。
  */
 sealed class JVal {
     data class JStr(val v: String) : JVal()

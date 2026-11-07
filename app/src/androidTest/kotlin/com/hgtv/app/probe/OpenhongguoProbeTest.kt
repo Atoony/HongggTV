@@ -5,7 +5,7 @@ import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.hgtv.app.player.ClearKeyLicense
+import com.hgtv.app.domain.contentKeyFromHex
 import dev.openhongguo.ClientOptions
 import dev.openhongguo.OpenhongguoClient
 import dev.openhongguo.OpenhongguoException
@@ -50,7 +50,7 @@ class OpenhongguoProbeTest {
 
     /**
      * 四连探针：hotSearch 取热词 → search → listEpisodes → resolvePlayback（≤5 集）→ contentKey。
-     * 验收：至少一集 protected=true 且内容密钥非空、可被 ClearKeyLicense.hexToBytes 还原成 16 字节。
+     * 验收：至少一集 protected=true 且内容密钥非空、可被 contentKeyFromHex 还原成 16 字节。
      */
     @Test
     fun fourChain_searchToContentKey() {
@@ -117,8 +117,8 @@ class OpenhongguoProbeTest {
         assertNotNull("≤$maxEpisodeProbes 集内未命中加密分集（protected+contentKey）", hit)
         val (episodeId, hexKey) = hit!!
 
-        // key 消费：SDK hex 串 → ClearKeyLicense 还原 16 字节 AES 密钥
-        val keyBytes = ClearKeyLicense.hexToBytes(hexKey)
+        // key 消费：SDK hex 串 → contentKeyFromHex 还原 16 字节 AES 密钥
+        val keyBytes = contentKeyFromHex(hexKey)
         assertNotNull("contentKey 非法 hex：$hexKey", keyBytes)
         assertEquals(16, keyBytes!!.size)
         log("⑤ contentKey 消费 OK：episode=$episodeId key=16字节(${hexKey.length} 位 hex)")

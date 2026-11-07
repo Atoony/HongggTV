@@ -1,8 +1,9 @@
-package com.hgtv.app.net
+package com.hgtv.app.json
 
 /**
  * 无依赖 JSON 解析器（JVM 单元测试与 Android 通用；大整数 ID 保留为字符串避免精度丢失）。
  * 返回值类型：Map<String, Any?> / List<Any?> / String / Long / Double / Boolean / null。
+ * 票15 从 net/ 迁出：旧自研逆向链退役，本件是 WatchStore 落盘等通用 JSON 基础设施。
  */
 object JsonParser {
 
@@ -13,13 +14,6 @@ object JsonParser {
         p.skipWs()
         if (!p.eof()) throw IllegalArgumentException("JSON 尾部多余字符 @${p.pos}")
         return v
-    }
-
-    /** 只解析首个 JSON 值并忽略尾部（等价 Go json.Decoder.Decode，用于 HTML 内嵌 JSON）。 */
-    fun parsePrefix(text: String): Any? {
-        val p = P(text)
-        p.skipWs()
-        return p.value()
     }
 
     private class P(val s: String) {
@@ -177,11 +171,5 @@ object JsonParser {
         is Double -> v.toLong()
         is String -> v.toLongOrNull() ?: 0L
         else -> 0L
-    }
-
-    fun nested(v: Any?, vararg keys: String): Map<String, Any?>? {
-        var cur = obj(v) ?: return null
-        for (k in keys) cur = obj(cur[k]) ?: return null
-        return cur
     }
 }

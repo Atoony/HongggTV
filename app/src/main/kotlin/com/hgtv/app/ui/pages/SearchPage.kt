@@ -116,7 +116,8 @@ internal fun firstCandidateRow(
 }
 
 /** 搜索页（票 11 三列改版，B 站 TV 式）：左列键盘输入 / 中列联想直达 / 右列历史热门 + 结果网格。
- *  票14 换芯：三列取数整体切 openhongguo SDK（热门词换 hotSearch 真源），交互零改动。 */
+ *  票14 换芯：三列取数整体切 openhongguo SDK（热门词换 hotSearch 真源）。
+ *  票15：中列直达行带 seriesId 直连详情（原 doSearch(标题) 多烧一发 search 配额退役）。 */
 @Composable
 fun SearchPage(
     source: OpenhongguoSource,
@@ -241,7 +242,7 @@ fun SearchPage(
                 onBackspace = { query = query.dropLast(1) },
                 onToggleMode = { pinyinMode = !pinyinMode },
                 onPickSuggestion = { doSearch(it) },
-                onPickName = { doSearch(it) },
+                onOpenDetail = onOpenDetail,
                 onPickPinyin = { c ->
                     PinyinFallback.pending(query)?.let { pend -> query = query.dropLast(pend.length) + c }
                 },
@@ -269,7 +270,7 @@ private fun SearchBoard(
     onBackspace: () -> Unit,
     onToggleMode: () -> Unit,
     onPickSuggestion: (String) -> Unit,
-    onPickName: (String) -> Unit,
+    onOpenDetail: (String) -> Unit,
     onPickPinyin: (String) -> Unit,
     onPickHistory: (String) -> Unit,
     onClearHistory: () -> Unit,
@@ -309,7 +310,7 @@ private fun SearchBoard(
             firstRow = firstRow,
             firstCandidateFocus = firstCandidateFocus,
             onPickSuggestion = onPickSuggestion,
-            onPickName = onPickName,
+            onOpenDetail = onOpenDetail,
             onPickPinyin = onPickPinyin,
             modifier = Modifier.weight(0.30f),
         )
@@ -381,7 +382,7 @@ private fun MiddleColumn(
     firstRow: Int?,
     firstCandidateFocus: FocusRequester,
     onPickSuggestion: (String) -> Unit,
-    onPickName: (String) -> Unit,
+    onOpenDetail: (String) -> Unit,
     onPickPinyin: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -415,21 +416,21 @@ private fun MiddleColumn(
             ) {
                 candidateSection(
                     label = "联想",
-                    entries = suggestions.map { it.text to "" },
+                    entries = suggestions.map { SuggestionCandidate(it.text, "") { onPickSuggestion(it.text) } },
                     firstFocus = if (firstRow == 0) firstCandidateFocus else null,
-                    onPick = onPickSuggestion,
                 )
+                // 直达：自带 seriesId，直连详情（票15：不走 doSearch 再烧一发 search 匿名配额）
                 candidateSection(
                     label = "直达",
-                    entries = nameHits.take(NAME_HITS_SHOWN).map { it.title to episodeBadge(it) },
+                    entries = nameHits.take(NAME_HITS_SHOWN).map {
+                        SuggestionCandidate(it.title, episodeBadge(it)) { onOpenDetail(it.seriesId) }
+                    },
                     firstFocus = if (firstRow == 1) firstCandidateFocus else null,
-                    onPick = onPickName,
                 )
                 candidateSection(
                     label = "拼音",
-                    entries = pinyinCandidates.map { it to "" },
+                    entries = pinyinCandidates.map { SuggestionCandidate(it, "") { onPickPinyin(it) } },
                     firstFocus = if (firstRow == 2) firstCandidateFocus else null,
-                    onPick = onPickPinyin,
                 )
             }
         }
@@ -443,20 +444,22 @@ internal fun episodeBadge(c: SeriesCard): String =
 /** 中列直达展示上限（不截会把拼音区挤出屏幕外）。 */
 private const val NAME_HITS_SHOWN = 10
 
+/** 中列候选条目：展示文本 + 角标 + 点击动作（联想/拼音=文本搜索，直达=seriesId 直连详情）。 */
+private class SuggestionCandidate(val text: String, val sub: String, val onPick: () -> Unit)
+
 private fun LazyListScope.candidateSection(
     label: String,
-    entries: List<Pair<String, String>>,
+    entries: List<SuggestionCandidate>,
     firstFocus: FocusRequester?,
-    onPick: (String) -> Unit,
 ) {
     if (entries.isEmpty()) return
     item(key = "${label}-head") { SectionLabel(label) }
-    itemsIndexed(entries, key = { i, _ -> "$label-$i" }) { i, (main, sub) ->
+    itemsIndexed(entries, key = { i, _ -> "$label-$i" }) { i, entry ->
         CandidateItem(
-            text = main,
-            sub = sub,
+            text = entry.text,
+            sub = entry.sub,
             modifier = if (i == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
-            onClick = { onPick(main) },
+            onClick = entry.onPick,
         )
     }
 }
