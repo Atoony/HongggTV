@@ -3,18 +3,22 @@ package com.hgtv.app.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.playerSettingsDataStore by preferencesDataStore(name = "player_settings")
 
-/** 播放器设置（SPEC §3.4 态2'）：自动连播开关持久化，跨会话生效。 */
+/** 播放器设置（SPEC §3.4 态2'）：自动连播/倍速持久化，跨会话生效。 */
 class PlayerSettingsStore(private val context: Context) {
 
     companion object {
         private val AUTO_NEXT = booleanPreferencesKey("auto_next")
         const val AUTO_NEXT_DEFAULT = true
+
+        private val SPEED = floatPreferencesKey("playback_speed")
+        const val SPEED_DEFAULT = 1.0f
     }
 
     val autoNext: Flow<Boolean> = context.playerSettingsDataStore.data.map { prefs ->
@@ -23,5 +27,13 @@ class PlayerSettingsStore(private val context: Context) {
 
     suspend fun setAutoNext(value: Boolean) {
         context.playerSettingsDataStore.edit { it[AUTO_NEXT] = value }
+    }
+
+    val speed: Flow<Float> = context.playerSettingsDataStore.data.map { prefs ->
+        prefs[SPEED] ?: SPEED_DEFAULT
+    }
+
+    suspend fun setSpeed(value: Float) {
+        context.playerSettingsDataStore.edit { it[SPEED] = value }
     }
 }

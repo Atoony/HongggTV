@@ -24,8 +24,8 @@ android {
         applicationId = "com.hgtv.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 100
-        versionName = "1.0.0"
+        versionCode = 1
+        versionName = "0.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

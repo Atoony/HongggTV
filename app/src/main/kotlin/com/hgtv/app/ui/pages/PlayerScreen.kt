@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,11 +53,14 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -92,8 +97,11 @@ private const val CONTROLS_AUTO_HIDE_MS = 5_000L
 private const val OSD_DURATION_MS = 3_000L
 private const val RECONNECT_LIMIT = 3
 
-/** 播放器覆盖层状态机（SPEC §3.4：态1 无 / 态2 选项栏 / 态3 选集 / 态2' 设置） */
-private enum class OverlayState { NONE, CONTROLS, EPISODES, SETTINGS }
+/** 倍速档位（操作栏倍速弹层）：短剧场景偏快档 */
+private val SPEED_OPTIONS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+
+/** 播放器覆盖层状态机（SPEC §3.4：态1 无 / 态2 选项栏 / 态3 选集 / 态2' 设置；倍速/清晰度为操作栏快捷弹层） */
+private enum class OverlayState { NONE, CONTROLS, EPISODES, SETTINGS, SPEED, QUALITY }
 
 private data class PlayError(val code: String, val message: String)
 
@@ -132,6 +140,8 @@ fun PlayerScreen(
     val scope = rememberCoroutineScope()
     // 自动连播开关：DataStore 持久化（票05），断网/重启后仍生效
     val autoNext by settings.autoNext.collectAsState(initial = PlayerSettingsStore.AUTO_NEXT_DEFAULT)
+    // 倍速：DataStore 持久化，Flow 初值为默认 1.0，真实持久值到达后由下方 effect 应用
+    val speed by settings.speed.collectAsState(initial = PlayerSettingsStore.SPEED_DEFAULT)
     var preferredQuality by rememberSaveable { mutableIntStateOf(1080) }
     var loadToken by remember { mutableIntStateOf(0) } // 换集/重试信号
     // 断点续播：最近已知播放位置（5s 快照 + 出错时捕获），错误页重试从这续播而非 startPositionMs
@@ -290,10 +300,15 @@ fun PlayerScreen(
         }
     }
 
+    // 倍速应用（单一机制：持久值到达/变更即设；player 级参数，换集不重置）
+    LaunchedEffect(player, speed) { player.setPlaybackParameters(PlaybackParameters(speed)) }
+
     // 返回链：浮层 → 选项栏 → 退播放回详情
     BackHandler {
         when (overlay) {
-            OverlayState.EPISODES, OverlayState.SETTINGS -> overlay = OverlayState.NONE
+            OverlayState.EPISODES, OverlayState.SETTINGS,
+            OverlayState.SPEED, OverlayState.QUALITY,
+            -> overlay = OverlayState.CONTROLS
             OverlayState.CONTROLS -> overlay = OverlayState.NONE
             OverlayState.NONE -> onExit()
         }
@@ -365,17 +380,73 @@ fun PlayerScreen(
 
         // 态 2 选项栏
         if (overlay == OverlayState.CONTROLS && error == null) {
-            LaunchedEffect(Unit) { runCatching { pauseFocus.requestFocus() } }
+            // 根因修复 2026-11-07：ControlButton 的 focusRequester 曾挂在 clickable 之后，
+            // Compose 要求在其之前才绑定——requestFocus() 抛异常被吞，呼出后焦点从未落位
+            // （要按多次↓爬回暂停键）。等一帧再请求是次级保险（态1舞台移除的焦点清除同帧竞态），
+            // 另有 AppRoot 下层屏障兜底。
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                runCatching { pauseFocus.requestFocus() }
+            }
             ControlsBar(
                 player = player,
                 isPlaying = isPlaying,
                 durationMs = durationMs,
+                speedLabel = "${speed}x",
+                qualityLabel = "${preferredQuality}P",
                 pauseFocus = pauseFocus,
                 onPrev = { if (currentEpisode > 1) currentEpisode -= 1 },
                 onNext = { if (currentEpisode < episodeCount) currentEpisode += 1 },
                 onEpisodes = { overlay = OverlayState.EPISODES },
+                onSpeed = { overlay = OverlayState.SPEED },
+                onQuality = { overlay = OverlayState.QUALITY },
                 onSettings = { overlay = OverlayState.SETTINGS },
                 onDismiss = { overlay = OverlayState.NONE },
+            )
+        }
+
+        // 倍速弹层（操作栏入口，2026-11-07 用户拍板从设置挪操作栏）
+        if (overlay == OverlayState.SPEED) {
+            val popupFocus = remember { FocusRequester() }
+            // 等帧理由同态 2
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                runCatching { popupFocus.requestFocus() }
+            }
+            OptionPopup(
+                title = "倍速",
+                options = SPEED_OPTIONS.map { "${it}x" },
+                current = "${speed}x",
+                initialFocus = popupFocus,
+                onPick = { label ->
+                    scope.launch { settings.setSpeed(label.removeSuffix("x").toFloat()) }
+                    osd = "倍速 $label"
+                    overlay = OverlayState.CONTROLS
+                },
+            )
+        }
+
+        // 清晰度弹层（操作栏入口；档位来自当前集线路，选值即设上限并原地换流）
+        if (overlay == OverlayState.QUALITY) {
+            val popupFocus = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                runCatching { popupFocus.requestFocus() }
+            }
+            OptionPopup(
+                title = "清晰度",
+                options = options.map { it.quality }.distinct().sortedDescending().map { "${it}P" },
+                current = "${preferredQuality}P",
+                initialFocus = popupFocus,
+                onPick = { label ->
+                    val q = label.removeSuffix("P").toInt()
+                    if (q != preferredQuality) {
+                        preferredQuality = q
+                        prepareAt(player.currentPosition)
+                        osd = "清晰度 $label"
+                    }
+                    overlay = OverlayState.CONTROLS
+                },
             )
         }
 
@@ -392,20 +463,19 @@ fun PlayerScreen(
             )
         }
 
-        // 态 2' 设置面板
+        // 态 2' 设置面板（清晰度/倍速挪操作栏后仅剩自动连播）
         if (overlay == OverlayState.SETTINGS) {
+            val settingsFocus = remember { FocusRequester() }
+            // 入口聚焦开关（等帧理由同态 2）
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                runCatching { settingsFocus.requestFocus() }
+            }
             SettingsPanel(
-                preferredQuality = preferredQuality,
                 autoNext = autoNext,
-                onQuality = { q ->
-                    if (q != preferredQuality) {
-                        preferredQuality = q
-                        prepareAt(player.currentPosition)
-                    }
-                    overlay = OverlayState.NONE
-                },
+                initialFocus = settingsFocus,
                 onAutoNext = { v -> scope.launch { settings.setAutoNext(v) } },
-                onClose = { overlay = OverlayState.NONE },
+                onClose = { overlay = OverlayState.CONTROLS },
             )
         }
 
@@ -435,10 +505,14 @@ private fun BoxScope.ControlsBar(
     player: Player,
     isPlaying: Boolean,
     durationMs: Long,
+    speedLabel: String,
+    qualityLabel: String,
     pauseFocus: FocusRequester,
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onEpisodes: () -> Unit,
+    onSpeed: () -> Unit,
+    onQuality: () -> Unit,
     onSettings: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -478,15 +552,8 @@ private fun BoxScope.ControlsBar(
             }
             .padding(horizontal = 48.dp, vertical = 20.dp),
     ) {
+        // 进度行：进度条 + 时间（2026-11-07 用户拍板：暂停键移下行按钮行，不与进度条同行）
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            ControlButton(
-                text = if (isPlaying) "⏸" else "▶",
-                focusRequester = pauseFocus,
-                onClick = {
-                    if (isPlaying) player.pause() else player.play()
-                    hideTick++
-                },
-            )
             SeekBar(
                 positionMs = pos,
                 durationMs = durationMs,
@@ -499,11 +566,24 @@ private fun BoxScope.ControlsBar(
             Text("${formatMs(pos)} / ${formatMs(durationMs)}", color = OnBgVariant, fontSize = 13.sp)
         }
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            ControlButton("上一集", onClick = { onPrev(); hideTick++ })
-            ControlButton("下一集", onClick = { onNext(); hideTick++ })
-            ControlButton("选集", onClick = { onEpisodes(); hideTick++ })
-            ControlButton("设置", onClick = { onSettings(); hideTick++ })
+        // 按钮行：暂停紧邻上一集左侧；传输类用图标（2026-11-07 用户拍板），倍速/清晰度显示当前值
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            ControlButton(
+                text = if (isPlaying) "⏸" else "▶",
+                fontSize = 18.sp,
+                horizontal = 15.dp,
+                focusRequester = pauseFocus,
+                onClick = {
+                    if (isPlaying) player.pause() else player.play()
+                    hideTick++
+                },
+            )
+            ControlButton("⏮", fontSize = 18.sp, horizontal = 15.dp, onClick = { onPrev(); hideTick++ })
+            ControlButton("⏭", fontSize = 18.sp, horizontal = 15.dp, onClick = { onNext(); hideTick++ })
+            ControlButton("☰", fontSize = 18.sp, horizontal = 15.dp, onClick = { onEpisodes(); hideTick++ })
+            ControlButton(speedLabel, onClick = onSpeed)
+            ControlButton(qualityLabel, onClick = onQuality)
+            ControlButton("⚙", fontSize = 18.sp, horizontal = 15.dp, onClick = { onSettings(); hideTick++ })
         }
     }
 }
@@ -535,21 +615,75 @@ private fun formatMs(ms: Long): String {
 }
 
 @Composable
-private fun ControlButton(text: String, onClick: () -> Unit, focusRequester: FocusRequester? = null) {
+private fun ControlButton(
+    text: String,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
+    fontSize: TextUnit = 15.sp,
+    horizontal: Dp = 20.dp,
+    selected: Boolean = false,
+) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
+    // ⚠️ focusRequester 必须在 clickable（产生 focusable 的地方）之前：挂在其后不绑定，
+    // requestFocus() 抛 "not attached" 被外层吞掉——2026-11-07 播放器呼出后焦点爬行的根因
     var m = Modifier
         .height(44.dp)
         .graphicsLayer { scaleX = scale; scaleY = scale }
+    if (focusRequester != null) m = m.focusRequester(focusRequester)
+    m = m
         .clip(shape)
-        .background(if (focused) PrimarySoft else KeySurface, shape)
+        .background(if (focused || selected) PrimarySoft else KeySurface, shape)
         .border(2.dp, if (focused) Primary else Color.Transparent, shape)
         .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-    if (focusRequester != null) m = m.focusRequester(focusRequester)
-    Box(m.padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = if (focused) OnBg else OnBgVariant, fontSize = 15.sp)
+    Box(m.padding(horizontal = horizontal), contentAlignment = Alignment.Center) {
+        Text(text, color = if (focused) OnBg else if (selected) Primary else OnBgVariant, fontSize = fontSize)
+    }
+}
+
+/** 倍速/清晰度快捷弹层（操作栏入口）：居中小面板，选值即回操作栏。 */
+@Composable
+private fun OptionPopup(
+    title: String,
+    options: List<String>,
+    current: String?,
+    initialFocus: FocusRequester,
+    onPick: (String) -> Unit,
+) {
+    // current 不在选项中（如持久上限高于本集线路）时落到首项
+    val focusTarget = options.firstOrNull { it == current } ?: options.firstOrNull()
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Scrim.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(KeySurfaceDim)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(title, color = OnBg, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(16.dp))
+            if (options.isEmpty()) {
+                Text("暂无可选项", color = OnBgVariant, fontSize = 14.sp)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    options.forEach { opt ->
+                        ControlButton(
+                            text = opt,
+                            selected = opt == current,
+                            focusRequester = if (opt == focusTarget) initialFocus else null,
+                            onClick = { onPick(opt) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -590,6 +724,7 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
     }
 }
 
+/** 态 3 选集：右侧抽屉（2026-11-07 用户拍板，替换全屏铺满）——左 55% 透画面、右 45% 菜单。 */
 @Composable
 private fun EpisodeOverlay(
     episodes: List<Episode>,
@@ -599,29 +734,51 @@ private fun EpisodeOverlay(
 ) {
     val groupCount = (episodes.size + 49) / 50
     var selectedTab by remember { mutableIntStateOf(((current - 1) / 50).coerceAtLeast(0)) }
-    Column(Modifier.fillMaxSize().background(Scrim.copy(alpha = 0.96f)).padding(48.dp)) {
-        Text("选集", color = OnBg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(16.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 16.dp)) {
-            items((0 until groupCount).toList()) { tab ->
-                val from = tab * 50 + 1
-                val to = minOf((tab + 1) * 50, episodes.size)
-                TabButton("$from-$to", tab == selectedTab) { selectedTab = tab }
-            }
-        }
-        val gridEpisodes = episodes.filter { (it.number - 1) / 50 == selectedTab }
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(8),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    val gridState = rememberLazyGridState()
+    val currentFocus = remember { FocusRequester() }
+    // 入口聚焦当前集：先滚进视口再请求（chip 未组合时 requester 悬空，票11 坑），runCatching 兜底
+    LaunchedEffect(Unit) {
+        gridState.scrollToItem(((current - 1) % 50).coerceAtLeast(0))
+        runCatching { currentFocus.requestFocus() }
+    }
+    Row(Modifier.fillMaxSize()) {
+        // 左侧透画面：不设背景不响应，遥控返回键关抽屉（BackHandler 已挂）
+        Spacer(Modifier.weight(0.55f).fillMaxHeight())
+        Column(
+            Modifier
+                .weight(0.45f)
+                .fillMaxHeight()
+                .background(Scrim.copy(alpha = 0.96f))
+                .padding(horizontal = 24.dp, vertical = 32.dp),
         ) {
-            items(gridEpisodes, key = { it.episodeId }) { ep ->
-                val look = when {
-                    ep.number == current -> ChipLook.CURRENT
-                    watched.contains(ep.number) -> ChipLook.WATCHED
-                    else -> ChipLook.NORMAL
+            Text("选集", color = OnBg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(16.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 16.dp)) {
+                items((0 until groupCount).toList()) { tab ->
+                    val from = tab * 50 + 1
+                    val to = minOf((tab + 1) * 50, episodes.size)
+                    TabButton("$from-$to", tab == selectedTab) { selectedTab = tab }
                 }
-                ChipOverlay(ep.number, look) { onPick(ep.number) }
+            }
+            val gridEpisodes = episodes.filter { (it.number - 1) / 50 == selectedTab }
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(4),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(gridEpisodes, key = { it.episodeId }) { ep ->
+                    val look = when {
+                        ep.number == current -> ChipLook.CURRENT
+                        watched.contains(ep.number) -> ChipLook.WATCHED
+                        else -> ChipLook.NORMAL
+                    }
+                    ChipOverlay(
+                        ep.number,
+                        look,
+                        modifier = if (ep.number == current) Modifier.focusRequester(currentFocus) else Modifier,
+                    ) { onPick(ep.number) }
+                }
             }
         }
     }
@@ -647,7 +804,7 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChipOverlay(index: Int, look: ChipLook, onClick: () -> Unit) {
+private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale = focusScale(focused)
@@ -658,7 +815,7 @@ private fun ChipOverlay(index: Int, look: ChipLook, onClick: () -> Unit) {
         ChipLook.NORMAL -> Triple(KeySurface, OnBgVariant, Color.Transparent)
     }
     Box(
-        Modifier
+        modifier
             .height(48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
@@ -671,11 +828,11 @@ private fun ChipOverlay(index: Int, look: ChipLook, onClick: () -> Unit) {
     }
 }
 
+/** 态 2' 设置：自动连播开关（清晰度/倍速 2026-11-07 挪操作栏后仅剩此项）。 */
 @Composable
 private fun SettingsPanel(
-    preferredQuality: Int,
     autoNext: Boolean,
-    onQuality: (Int) -> Unit,
+    initialFocus: FocusRequester,
     onAutoNext: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -684,14 +841,9 @@ private fun SettingsPanel(
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         Text("设置", color = OnBg, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-        Text("清晰度（当前 ${if (preferredQuality >= 1080) "1080P" else "720P"}）", color = OnBgVariant, fontSize = 14.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ControlButton("1080P", onClick = { onQuality(1080) })
-            ControlButton("720P", onClick = { onQuality(720) })
-        }
         Text("自动连播（${if (autoNext) "开" else "关"}）", color = OnBgVariant, fontSize = 14.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ControlButton(if (autoNext) "开" else "关", onClick = { onAutoNext(!autoNext) })
+            ControlButton(if (autoNext) "开" else "关", onClick = { onAutoNext(!autoNext) }, focusRequester = initialFocus)
         }
         ControlButton("返回", onClick = onClose)
     }

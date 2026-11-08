@@ -58,9 +58,6 @@ import com.hgtv.app.ui.theme.Scrim
 import com.hgtv.app.ui.theme.SeasonGold
 import com.hgtv.app.ui.theme.Surface
 
-// wayfinder 票 04 验证过的样本剧（调试入口，保留在热播榜首）
-const val DEBUG_SERIES_ID = "7688352674999176254"
-
 /** 首页（SPEC §3.1）：继续观看 / 热播榜 两行，无 banner。
  *  2026-10-31 "为你推荐"行移除：票10 后与热播榜同源（web 榜单分页），两行头部完全重复。 */
 @Composable
@@ -69,6 +66,7 @@ fun HomePage(
     history: List<WatchEntry>,
     historyReady: Boolean,
     active: Boolean,
+    entryFocus: FocusRequester,
     onOpenDetail: (String) -> Unit,
     onResume: (WatchEntry) -> Unit,
     onOpenHistory: () -> Unit,
@@ -77,9 +75,9 @@ fun HomePage(
     var rankItems by remember { mutableStateOf<List<SeriesCard>?>(null) }
     var rankError by remember { mutableStateOf<String?>(null) }
 
-    // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落热播榜首卡；每会话仅一次
-    val resumeFirstFocus = remember { FocusRequester() }
-    val rankFirstFocus = remember { FocusRequester() }
+    // 进页焦点落位（SPEC §3.1）：有历史落"继续观看"首卡，无历史落热播榜首卡；每会话仅一次。
+    // requester 用 AppRoot 注入的入口焦点（侧栏 RIGHT / 覆盖层关闭直达此卡）——一个
+    // requester 同帧只能挂一个节点，由 entryOnResume 二选一。
     var focusPlaced by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -92,23 +90,29 @@ fun HomePage(
     }
 
     LazyColumn(
-        modifier = modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp),
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 48.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
-        if (history.isNotEmpty()) {
+        // 入口焦点挂哪行：有历史挂"继续观看"首卡，否则挂热播榜首卡
+        val entryOnResume = history.isNotEmpty()
+        if (entryOnResume) {
             item { RowHeader("继续观看") }
             item {
                 // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
                 val resumePrefetch = rememberRowPrefetch(history.map { it.cover })
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
                         PosterCard(
                             title = entry.title,
                             badge = entry.episodeBadge,
                             cover = entry.cover,
                             progress = entry.progressFraction,
-                            focusRequester = if (index == 0) resumeFirstFocus else null,
+                            focusRequester = if (index == 0 && entryOnResume) entryFocus else null,
                             onFocused = { resumePrefetch.onFocus(index) },
                             onClick = { onResume(entry) },
                         )
@@ -124,27 +128,20 @@ fun HomePage(
                 rankError != null -> RowHint("热播榜加载失败：$rankError")
                 else -> {
                     val rankList = rankItems.orEmpty()
-                    // 调试入口（原推荐行首，2026-10-31 推荐行移除后挪到热播榜首）
-                    val debugFirst = rankList.none { it.seriesId == DEBUG_SERIES_ID }
-                    val rankPrefetch = rememberRowPrefetch(
-                        (if (debugFirst) listOf("") else emptyList()) + rankList.map { it.cover }
-                    )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if (debugFirst) {
-                        item(key = "debug") {
-                            PosterCard(title = "调试样本剧", badge = "调试", cover = "", focusRequester = rankFirstFocus, onClick = { onOpenDetail(DEBUG_SERIES_ID) })
+                    val rankPrefetch = rememberRowPrefetch(rankList.map { it.cover })
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
+                            PosterCard(
+                                title = item.title,
+                                badge = "NO.${item.rank}",
+                                cover = item.cover,
+                                focusRequester = if (index == 0 && !entryOnResume) entryFocus else null,
+                                onFocused = { rankPrefetch.onFocus(index) },
+                                onClick = { onOpenDetail(item.seriesId) },
+                            )
                         }
-                    }
-                    itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
-                        PosterCard(
-                            title = item.title,
-                            badge = "NO.${item.rank}",
-                            cover = item.cover,
-                            focusRequester = if (index == 0 && !debugFirst) rankFirstFocus else null,
-                            onFocused = { rankPrefetch.onFocus(index + if (debugFirst) 1 else 0) },
-                            onClick = { onOpenDetail(item.seriesId) },
-                        )
-                    }
                     }
                 }
             }
@@ -155,13 +152,9 @@ fun HomePage(
     // 仅在首页可见时执行，避免详情/播放覆盖层下抢焦点；成功才置位）
     LaunchedEffect(active, historyReady, history.size, rankItems?.size) {
         if (!active || !historyReady || focusPlaced) return@LaunchedEffect
-        val target = when {
-            history.isNotEmpty() -> resumeFirstFocus
-            !rankItems.isNullOrEmpty() -> rankFirstFocus
-            else -> return@LaunchedEffect
-        }
+        if (history.isEmpty() && rankItems.isNullOrEmpty()) return@LaunchedEffect
         repeat(8) {
-            if (runCatching { target.requestFocus() }.isSuccess) {
+            if (runCatching { entryFocus.requestFocus() }.isSuccess) {
                 focusPlaced = true
                 return@LaunchedEffect
             }

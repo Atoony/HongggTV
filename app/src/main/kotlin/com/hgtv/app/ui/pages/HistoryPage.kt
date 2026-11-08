@@ -20,12 +20,18 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -51,10 +57,24 @@ import com.hgtv.app.ui.theme.Primary
 fun HistoryPage(
     history: List<WatchEntry>,
     historyReady: Boolean,
+    entryFocus: FocusRequester,
     onResume: (WatchEntry) -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 进页焦点落位：首卡持有 AppRoot 入口 requester（侧栏 RIGHT/页面切换直达）；数据异步时短暂重试
+    var focusPlaced by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(historyReady, history.size) {
+        if (!historyReady || focusPlaced || history.isEmpty()) return@LaunchedEffect
+        repeat(8) {
+            if (runCatching { entryFocus.requestFocus() }.isSuccess) {
+                focusPlaced = true
+                return@LaunchedEffect
+            }
+            kotlinx.coroutines.delay(50)
+        }
+    }
+
     Column(modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(bottom = 20.dp),
@@ -87,6 +107,7 @@ fun HistoryPage(
                             modifier = Modifier.fillMaxWidth(),
                             progress = entry.progressFraction,
                             focusedScale = 1.06f, // DESIGN §3：网格卡片可到 1.06x
+                            focusRequester = if (index == 0) entryFocus else null,
                             onFocused = { prefetcher.onFocus(index) },
                             onClick = { onResume(entry) },
                         )

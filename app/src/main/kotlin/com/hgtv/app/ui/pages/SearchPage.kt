@@ -121,6 +121,7 @@ internal fun firstCandidateRow(
 @Composable
 fun SearchPage(
     source: OpenhongguoSource,
+    entryFocus: FocusRequester,
     onOpenDetail: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -211,7 +212,8 @@ fun SearchPage(
     // 遥控返回：结果态先回键盘（保留输入与结果），键盘态交回上级返回链
     BackHandler(enabled = showResults) { showResults = false }
 
-    Column(modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
+    // vertical 24（原 32）：键盘 4 行→7 行后竖向预算收紧（540dp 屏），padding 让位键区
+    Column(modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 24.dp)) {
         Text(
             "搜索",
             style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold),
@@ -224,11 +226,13 @@ fun SearchPage(
                 word = resultWord,
                 loading = searching,
                 dramas = results ?: emptyList(),
+                entryFocus = entryFocus,
                 onOpenDetail = onOpenDetail,
                 onBack = { showResults = false },
             )
         } else {
             SearchBoard(
+                entryFocus = entryFocus,
                 query = query,
                 pinyinMode = pinyinMode,
                 suggestions = suggestions,
@@ -257,6 +261,7 @@ fun SearchPage(
 
 @Composable
 private fun SearchBoard(
+    entryFocus: FocusRequester,
     query: String,
     pinyinMode: Boolean,
     suggestions: List<Suggestion>,
@@ -277,29 +282,31 @@ private fun SearchBoard(
     onPickHotWord: (String) -> Unit,
     onSearch: () -> Unit,
 ) {
-    val boardFocus = remember { FocusRequester() }
     val firstCandidateFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { boardFocus.requestFocus() } } // 进页/回键盘 落键盘
+    // 进页/回键盘 落键盘首键（entryFocus 由 AppRoot 注入——requester 必须挂在可见可聚焦
+    // 节点上，曾挂 Keyboard 根 Column（非 focusable 容器）从未绑定成功，落焦空转）
+    LaunchedEffect(Unit) { runCatching { entryFocus.requestFocus() } }
 
     // 中列首焦区单点判定（联想>直达>拼音）；null=中列无候选
     val firstRow = firstCandidateRow(suggestions, nameHits, pinyinCandidates)
 
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        // 左列（约 45%）：QueryBox + ABC 键盘
-        Column(Modifier.weight(0.45f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // 左列（约 35%，2026-11-07 对齐 blbl 收窄）：QueryBox + ABC 键盘
+        Column(Modifier.weight(0.35f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             QueryBox(query, pinyinMode)
             Keyboard(
                 pinyinMode = pinyinMode,
+                entryFocus = entryFocus,
                 // 空态提示占据中列时首焦 requester 未挂载，行尾 RIGHT 须走默认搜索（评审#4）
                 rightTarget = if (firstRow != null && emptyNotice.isEmpty()) firstCandidateFocus else null,
                 onKey = onKey,
                 onBackspace = onBackspace,
                 onToggleMode = onToggleMode,
                 onSearch = onSearch,
-                modifier = Modifier.weight(1f).focusRequester(boardFocus),
+                modifier = Modifier.weight(1f),
             )
         }
-        // 中列（约 30%）：联想 / 直达 / 拼音 竖排列表（B 站样式条目）
+        // 中列（约 35%）：联想 / 直达 / 拼音 竖排列表（B 站样式条目）
         MiddleColumn(
             query = query,
             emptyNotice = emptyNotice,
@@ -312,16 +319,16 @@ private fun SearchBoard(
             onPickSuggestion = onPickSuggestion,
             onOpenDetail = onOpenDetail,
             onPickPinyin = onPickPinyin,
-            modifier = Modifier.weight(0.30f),
+            modifier = Modifier.weight(0.35f),
         )
-        // 右列（约 25%）：搜索历史 + 热门
+        // 右列（约 30%）：搜索历史 + 热门
         RightColumn(
             history = history,
             hotWords = hotWords,
             onPickHistory = onPickHistory,
             onClearHistory = onClearHistory,
             onPickHotWord = onPickHotWord,
-            modifier = Modifier.weight(0.25f),
+            modifier = Modifier.weight(0.30f),
         )
     }
 }
@@ -554,17 +561,22 @@ private fun CandidateItem(
     }
 }
 
-/** ABC 字母序键盘（SPEC §3.2 / 票11 三列）：数字行 + A-J / K-T / U-Z + 拼/EN ⌫ 空格 搜索。 */
-private val KEY_ROWS = listOf(
-    "1234567890",
-    "ABCDEFGHIJ",
-    "KLMNOPQRST",
-    "UVWXYZ",
+/** ABC 字母序键盘（SPEC §3.2 / 票11 三列；2026-11-07 对齐 blbl 拍板）：6 列×6 行，A-Z 后接数字
+ *  1234/567890（1 开头 0 结尾，数字键盘惯例）；功能键独立末行横条 拼/EN ⌫ 搜索——无空格键
+ *  （短剧搜索无空格场景，用户拍板去掉）。 */
+internal val KEY_ROWS = listOf(
+    "ABCDEF",
+    "GHIJKL",
+    "MNOPQR",
+    "STUVWX",
+    "YZ1234",
+    "567890",
 )
 
 @Composable
 private fun Keyboard(
     pinyinMode: Boolean,
+    entryFocus: FocusRequester, // 首键"A"持有（AppRoot 入口焦点直达）
     rightTarget: FocusRequester?, // 中列首焦（联想>直达>拼音）；null=中列无候选，行尾 RIGHT 走默认
     onKey: (String) -> Unit,
     onBackspace: () -> Unit,
@@ -584,27 +596,28 @@ private fun Keyboard(
                     false
                 }
             },
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp), // 7 行竖向预算紧（540dp 屏），间距 10→8
     ) {
-        KEY_ROWS.forEachIndexed { i, row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                row.forEach { ch ->
-                    // 行尾判定：末行字母后还有功能键，视觉末列只有 SearchKey
-                    val isLast = ch == row.last() && i != KEY_ROWS.lastIndex
+        KEY_ROWS.forEachIndexed { rowIndex, row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                row.forEachIndexed { colIndex, ch ->
+                    // 6 行字母数字整行铺满，行尾键即末列：RIGHT 进中列（票11）
+                    val isLast = ch == row.last()
                     KeyButton(
                         label = ch.toString(),
                         weight = 1f,
+                        focusRequester = if (rowIndex == 0 && colIndex == 0) entryFocus else null,
                         onFocusGained = { lastColFocused = isLast },
                         onClick = { onKey(ch.toString()) },
                     )
                 }
-                if (i == KEY_ROWS.lastIndex) { // U-Z 行尾功能键：拼/EN ⌫ 空格 搜索
-                    KeyButton(label = if (pinyinMode) "拼/EN" else "EN/拼", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onToggleMode)
-                    KeyButton(label = "⌫", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onBackspace)
-                    KeyButton(label = "空格", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = { onKey(" ") })
-                    SearchKey(onFocusGained = { lastColFocused = true }, onClick = onSearch)
-                }
             }
+        }
+        // 功能键末行横条（不再与数字同网格）：拼/EN ⌫ 搜索；仅搜索是行尾 → RIGHT 进中列
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            KeyButton(label = if (pinyinMode) "拼/EN" else "EN/拼", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onToggleMode)
+            KeyButton(label = "⌫", weight = 1.4f, onFocusGained = { lastColFocused = false }, onClick = onBackspace)
+            SearchKey(onFocusGained = { lastColFocused = true }, onClick = onSearch)
         }
     }
 }
@@ -613,6 +626,7 @@ private fun Keyboard(
 private fun androidx.compose.foundation.layout.RowScope.KeyButton(
     label: String,
     weight: Float,
+    focusRequester: FocusRequester? = null,
     onFocusGained: () -> Unit = {},
     onClick: () -> Unit,
 ) {
@@ -621,7 +635,8 @@ private fun androidx.compose.foundation.layout.RowScope.KeyButton(
     Box(
         Modifier
             .weight(weight)
-            .height(52.dp)
+            .height(44.dp) // 4 行→7 行竖向预算紧，52→44（2026-11-07 blbl 6×6）
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Primary else KeySurface)
             .onFocusChanged { if (it.isFocused) onFocusGained() }
@@ -639,7 +654,7 @@ private fun androidx.compose.foundation.layout.RowScope.SearchKey(onFocusGained:
     Box(
         Modifier
             .weight(2.2f)
-            .height(52.dp)
+            .height(44.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color(0xFFFF8A65) else Primary)
             .onFocusChanged { if (it.isFocused) onFocusGained() }
@@ -655,18 +670,19 @@ private fun ResultGrid(
     word: String,
     loading: Boolean,
     dramas: List<SeriesCard>,
+    entryFocus: FocusRequester, // AppRoot 入口焦点：结果态由"← 返回"键持有（键盘态是首键 A，
+    // 子模式互斥组合，requester 始终有归属——详情页返回后 AppRoot 落焦才有有效目标）
     onOpenDetail: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val resultFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { resultFocus.requestFocus() } }
+    LaunchedEffect(Unit) { runCatching { entryFocus.requestFocus() } }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            BackKey(onBack, modifier = Modifier.focusRequester(resultFocus))
+            BackKey(onBack, modifier = Modifier.focusRequester(entryFocus))
             Text(
                 if (loading) "正在搜索「$word」…" else "「$word」的结果（${dramas.size} 部）",
                 color = OnBg,

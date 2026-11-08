@@ -6,7 +6,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -35,9 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -79,7 +76,10 @@ fun AppRoot() {
     var playEpisode by remember { mutableStateOf<Int?>(null) }
     var playResumeMs by remember { mutableStateOf(0L) }
     var autoResume by remember { mutableStateOf<com.hgtv.app.data.WatchEntry?>(null) } // 历史/首页续播：加载完详情直接进播放
-    val contentRequester = remember { FocusRequester() }
+    // 内容区入口焦点：由当前页的首个可见交互组件持有（侧栏 RIGHT / 页面切换 / 覆盖层关闭都请求它）。
+    // ⚠️ 不能挂 focusGroup 容器上——requestFocus 会落在组节点本身，无视觉无语义（2026-11-07
+    // 实测：侧栏按右焦点"消失"，dump 无 focused 节点，方向键也爬不出来）。
+    val pageEntryFocus = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
     // 数据源层（ADR 0001）：一切红果数据经 openhongguo SDK，App 级单例（票13 播放链 + 票14 元数据）
     val ohgSource = remember { com.hgtv.app.data.OpenhongguoSource(context) }
@@ -138,28 +138,47 @@ fun AppRoot() {
         detailSeriesId = sid
     }
 
+    // 页面切换/覆盖层关闭后重落入口焦点。带重试：入口 requester 由页面首个可见交互组件持有，
+    // 数据未就绪/子模式切换（如搜索结果态）时有短暂悬空窗口，一次请求会失败（2026-11-07
+    // 实测：详情→搜索结果页返回后焦点掉根部无人捡，且波及后续页面）。
     LaunchedEffect(current, detailSeriesId, playEpisode) {
-        if (detailSeriesId == null && playEpisode == null) runCatching { contentRequester.requestFocus() }
+        if (detailSeriesId == null && playEpisode == null) {
+            repeat(8) {
+                if (runCatching { pageEntryFocus.requestFocus() }.isSuccess) return@LaunchedEffect
+                kotlinx.coroutines.delay(50)
+            }
+        }
     }
 
-    Row(Modifier.fillMaxSize().background(Bg)) {
+    // 下层焦点屏障：详情/播放覆盖层打开时下层子树（侧栏+内容页）整体退出焦点竞争——覆盖层
+    // 换装移除持焦组件时焦点若掉进被画面盖住的下层网格，方向键要在下层逐行爬才能回覆盖层。
+    // ⚠️ 屏障必须"条件挂载"而非常驻 focusProperties{canFocus=...}：祖先上只要存在
+    // canFocus 属性节点（哪怕恒为 true），LazyColumn/LazyRow 的方向进入就会落进容器
+    // 内部隐形节点（无视觉、a11y 不暴露）——2026-11-07 最小复现二分定位（步B/C/D）。
+    // 常态（无覆盖层）树中不存在该节点，方向搜索直达卡片；覆盖层打开时挂上，canFocus
+    // 沿树继承，下层全部子级退出焦点竞争。
+    val overlayOpen = detailSeriesId != null || playEpisode != null
+    Row(
+        Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .then(if (overlayOpen) Modifier.focusProperties { canFocus = false } else Modifier),
+    ) {
         Sidebar(
             selected = current,
             onSelect = { current = it },
-            rightTarget = contentRequester,
         )
         Box(
             Modifier
                 .weight(1f)
-                .fillMaxHeight()
-                .focusRequester(contentRequester)
-                .focusGroup(),
+                .fillMaxHeight(),
         ) {
             when (current) {
                 NavDest.HOME -> HomePage(
                     source = ohgSource,
                     history = history,
                     historyReady = historyState != null,
+                    entryFocus = pageEntryFocus,
                     // 详情/播放覆盖层打开时首页不抢焦点（继续观看首卡落位会打断播放器按键）
                     active = detailSeriesId == null && playEpisode == null,
                     onOpenDetail = { detailSeriesId = it },
@@ -168,11 +187,13 @@ fun AppRoot() {
                 )
                 NavDest.SEARCH -> SearchPage(
                     source = ohgSource,
+                    entryFocus = pageEntryFocus,
                     onOpenDetail = { detailSeriesId = it },
                 )
                 NavDest.HISTORY -> HistoryPage(
                     history = history,
                     historyReady = historyState != null,
+                    entryFocus = pageEntryFocus,
                     onResume = { entry -> openDetail(entry.seriesId, entry) },
                     onClear = { scope.launch { watchStore.clear() } },
                 )
@@ -232,7 +253,7 @@ fun AppRoot() {
 }
 
 @Composable
-private fun Sidebar(selected: NavDest, onSelect: (NavDest) -> Unit, rightTarget: FocusRequester) {
+private fun Sidebar(selected: NavDest, onSelect: (NavDest) -> Unit) {
     Column(
         Modifier
             .width(132.dp)
@@ -246,18 +267,19 @@ private fun Sidebar(selected: NavDest, onSelect: (NavDest) -> Unit, rightTarget:
                 label = dest.label,
                 selected = dest == selected,
                 onClick = { onSelect(dest) },
-                rightTarget = rightTarget,
             )
         }
     }
 }
 
+/** 侧栏项不挂 focusProperties{right} 跳转目标：默认方向搜索找几何最近的可见可交互组件，
+ *  且不经过 FocusRequester——自定义目标一旦悬空（页面数据未就绪/结果态键盘卸载），
+ *  焦点搜索在框架内解析悬空 requester 直接 IllegalStateException 闪退（2026-11-07 实测）。 */
 @Composable
 private fun SidebarItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    rightTarget: FocusRequester,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
@@ -287,7 +309,6 @@ private fun SidebarItem(
                     )
                 }
             }
-            .focusProperties { right = rightTarget }
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

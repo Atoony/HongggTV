@@ -2,6 +2,7 @@ package com.hgtv.app
 
 import com.hgtv.app.domain.SeriesCard
 import com.hgtv.app.domain.Suggestion
+import com.hgtv.app.ui.pages.KEY_ROWS
 import com.hgtv.app.ui.pages.episodeBadge
 import com.hgtv.app.ui.pages.firstCandidateRow
 import org.junit.Assert.assertEquals
@@ -12,6 +13,14 @@ import org.junit.Test
 class SearchColumnsTest {
 
     private fun drama(title: String) = SeriesCard(seriesId = "1".repeat(16), title = title, cover = "")
+
+    @Test
+    fun `键盘 - 字母先行数字殿后`() {
+        // 2026-11-07 对齐 blbl 拍板：A-Z 顺序无跳断，数字 1 开头 0 结尾接在 Z 后（6 列×6 行）
+        assertEquals("ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890", KEY_ROWS.joinToString(""))
+        assertEquals(6, KEY_ROWS.size)
+        assertEquals(6, KEY_ROWS[0].length)
+    }
 
     @Test
     fun `中列首焦 - 联想最优先`() {
