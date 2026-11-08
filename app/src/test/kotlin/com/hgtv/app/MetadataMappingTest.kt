@@ -1,12 +1,14 @@
 package com.hgtv.app
 
 import com.hgtv.app.data.OpenhongguoSource.Companion.formatCount
+import com.hgtv.app.data.OpenhongguoSource.Companion.mapAlbum
 import com.hgtv.app.data.OpenhongguoSource.Companion.mapHotWords
 import com.hgtv.app.data.OpenhongguoSource.Companion.mapRank
 import com.hgtv.app.data.OpenhongguoSource.Companion.mapSearch
 import com.hgtv.app.data.OpenhongguoSource.Companion.mapSeriesDetail
 import com.hgtv.app.data.OpenhongguoSource.Companion.mapSuggest
 import com.hgtv.app.data.TTLCache
+import dev.openhongguo.Album as SdkAlbum
 import dev.openhongguo.HotBoard
 import dev.openhongguo.HotItem
 import dev.openhongguo.HotSearch
@@ -147,6 +149,8 @@ class MetadataMappingTest {
         playCount: Long = 340_000L,
         subtitles: List<String> = listOf("全2集", "红果热度值12万"),
         episodeCount: Int = 2,
+        isMultiSeason: Boolean = false,
+        seasonIndex: Int = 0,
         rows: List<InfoRow> = listOf(
             InfoRow(kind = InfoKind.SEASON_ORDER, text = "第1季"),
             InfoRow(kind = InfoKind.CATEGORY, text = "末世"),
@@ -156,7 +160,7 @@ class MetadataMappingTest {
         id = "7100000000000101", title = "Fixture Lantern Court", description = "A public synopsis.",
         coverUrl = "https://media.invalid/cover.jpg", episodeCount = episodeCount,
         rightText = rightText, subtitles = subtitles, status = status, category = category,
-        playCount = playCount,
+        playCount = playCount, isMultiSeason = isMultiSeason, seasonIndex = seasonIndex,
         rows = rows,
     )
 
@@ -201,6 +205,84 @@ class MetadataMappingTest {
         assertEquals("共2集", d.remark)
         assertEquals(2, d.episodeCnt) // episodeCount=0 → 退集数列表长度
         assertEquals(emptyList<String>(), d.categories)
+    }
+
+    @Test
+    fun `详情映射 - isMultiSeason 与 seasonIndex 直出`() {
+        val d = mapSeriesDetail(
+            SdkSeriesDetail(
+                series = sdkSeries(isMultiSeason = true, seasonIndex = 2),
+                episodes = listOf(sdkEpisode("7100000000000201", 1), sdkEpisode("7100000000000202", 2)),
+            ),
+            "7100000000000101",
+        )
+        assertEquals(true, d.isMultiSeason)
+        assertEquals(2, d.seasonIndex)
+        // 单季缺省：门控关闭 + 季序未知
+        val single = mapSeriesDetail(
+            SdkSeriesDetail(
+                series = sdkSeries(),
+                episodes = listOf(sdkEpisode("7100000000000201", 1)),
+            ),
+            "7100000000000101",
+        )
+        assertEquals(false, single.isMultiSeason)
+        assertEquals(0, single.seasonIndex)
+    }
+
+    // ---------- 合集（票17） ----------
+
+    private fun sdkSeason(seriesId: String, index: Int, episodeCount: Int, status: SeriesStatus = SeriesStatus.UPDATING) =
+        dev.openhongguo.Season(seriesId = seriesId, title = "第${index}季", index = index, episodeCount = episodeCount, status = status)
+
+    @Test
+    fun `合集映射 - 季序稳定排序 滤空 id 未上线判定`() {
+        val album = mapAlbum(
+            SdkAlbum(
+                id = "alb1", title = "Fixture Saga", description = "An album.", seasonCount = 3,
+                seasons = listOf(
+                    sdkSeason("", 2, 10), // 空 id 滤除
+                    sdkSeason("7100000000000503", 3, 0), // 未上线（SDK 夹具形态：即将上线的季 episode_cnt=0）
+                    sdkSeason("7100000000000101", 1, 154, SeriesStatus.END),
+                    sdkSeason("7100000000000502", 2, 118),
+                ),
+            ),
+        )
+        assertEquals("Fixture Saga", album.title)
+        assertEquals("An album.", album.description)
+        assertEquals(listOf(1, 2, 3), album.seasons.map { it.index })
+        assertEquals(listOf("7100000000000101", "7100000000000502", "7100000000000503"), album.seasons.map { it.seriesId })
+        assertEquals(true, album.seasons[0].finished)
+        assertEquals(true, album.seasons[2].released.not()) // episodeCount=0 → 未上线
+        assertEquals(0, album.seasons[2].episodeCount)
+    }
+
+    @Test
+    fun `合集映射 - index 0 兜底为 1 同序号按 seriesId 稳定`() {
+        val album = mapAlbum(
+            SdkAlbum(
+                seasons = listOf(
+                    sdkSeason("b", 0, 10), // 退化路径缺季号
+                    sdkSeason("a", 0, 20),
+                ),
+            ),
+        )
+        assertEquals(listOf("a" to 1, "b" to 1), album.seasons.map { it.seriesId to it.index })
+    }
+
+    @Test
+    fun `合集映射 - 重复 seriesId 去重防 grid key 冲突`() {
+        // AlbumPage LazyVerticalGrid 以 seriesId 为 key，重复 id 组合期抛异常（评审 finding）
+        val album = mapAlbum(
+            SdkAlbum(
+                seasons = listOf(
+                    sdkSeason("a", 1, 10),
+                    sdkSeason("a", 1, 10), // 退化路径重复行
+                    sdkSeason("b", 2, 0),
+                ),
+            ),
+        )
+        assertEquals(listOf("a", "b"), album.seasons.map { it.seriesId })
     }
 
     @Test

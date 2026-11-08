@@ -73,6 +73,11 @@ fun AppRoot() {
     var detailSeriesId by rememberSaveable { mutableStateOf<String?>(null) }
     var detailData by remember { mutableStateOf<com.hgtv.app.domain.SeriesDetail?>(null) }
     var detailError by remember { mutableStateOf<String?>(null) }
+    // 合集覆盖层（票17）：详情之上、播放器之下的整页层；数据按 seriesId 缓存，开关不重拉
+    var albumOpen by rememberSaveable { mutableStateOf(false) }
+    var albumData by remember { mutableStateOf<com.hgtv.app.domain.Album?>(null) }
+    var albumError by remember { mutableStateOf<String?>(null) }
+    var albumSeriesId by remember { mutableStateOf<String?>(null) }
     var playEpisode by remember { mutableStateOf<Int?>(null) }
     var playResumeMs by remember { mutableStateOf(0L) }
     var autoResume by remember { mutableStateOf<com.hgtv.app.data.WatchEntry?>(null) } // 历史/首页续播：加载完详情直接进播放
@@ -129,8 +134,33 @@ fun AppRoot() {
         }
     }
 
+    // 合集取数（票17）：仅在多季详情"查看合集"打开时拉取；错误不缓存（频控/抖动重进可重试），
+    // 同合集不重拉（匿名配额纪律）——缓存键虽是首拉季的 seriesId，但跳季后的新 sid 命中
+    // 已缓存季列表时沿用同一份 albumData（合集页逐季跳转不重复花配额）
+    LaunchedEffect(albumOpen, detailSeriesId) {
+        val sid = detailSeriesId ?: return@LaunchedEffect
+        if (!albumOpen) return@LaunchedEffect
+        if (albumSeriesId == sid && albumData != null) return@LaunchedEffect
+        if (albumData?.seasons?.any { it.seriesId == sid } == true) return@LaunchedEffect
+        albumSeriesId = sid
+        albumData = null
+        albumError = null
+        try {
+            albumData = ohgSource.seasons(sid)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            albumError = e.message ?: "合集加载失败"
+        }
+    }
+
     fun openDetail(sid: String, resume: com.hgtv.app.data.WatchEntry? = null) {
         autoResume = resume
+        // 换剧重置合集层：焦点若穿透到下层点开新剧（合集页边界 RIGHT 清焦点的极端路径），
+        // albumOpen 残留会把新详情直接盖在别人的合集页下（2026-11-08 模拟器实测）。
+        // ⚠️ 一切详情入口（首页/搜索/历史/合集跳季）必须经本函数——直赋 detailSeriesId
+        // 会旁路 albumOpen/autoResume 重置（评审 finding）
+        albumOpen = false
         if (detailSeriesId != sid) {
             detailData = null
             detailError = null
@@ -181,14 +211,14 @@ fun AppRoot() {
                     entryFocus = pageEntryFocus,
                     // 详情/播放覆盖层打开时首页不抢焦点（继续观看首卡落位会打断播放器按键）
                     active = detailSeriesId == null && playEpisode == null,
-                    onOpenDetail = { detailSeriesId = it },
+                    onOpenDetail = { openDetail(it) },
                     onResume = { entry -> openDetail(entry.seriesId, entry) },
                     onOpenHistory = { current = NavDest.HISTORY },
                 )
                 NavDest.SEARCH -> SearchPage(
                     source = ohgSource,
                     entryFocus = pageEntryFocus,
-                    onOpenDetail = { detailSeriesId = it },
+                    onOpenDetail = { openDetail(it) },
                 )
                 NavDest.HISTORY -> HistoryPage(
                     history = history,
@@ -201,16 +231,17 @@ fun AppRoot() {
         }
     }
 
-    // 详情覆盖层
-    if (detailSeriesId != null && playEpisode == null) {
+    // 详情覆盖层（合集层打开时卸载——同播放器模式：返回时重组，入口焦点由页面自落）。
+    // Box 级 BackHandler 兜底"加载中"分支：该窗口内 DetailPage/ErrorPane 均未组合，无人
+    // 消费返回键会穿透（弱网下直接退出 App，评审 finding）
+    if (detailSeriesId != null && playEpisode == null && !albumOpen) {
         val data = detailData
         val watched = history.find { it.seriesId == detailSeriesId }?.let { (1 until it.episode).toSet() } ?: emptySet()
+        BackHandler { detailSeriesId = null }
         Box(Modifier.fillMaxSize().background(Bg)) {
             when {
                 detailError != null -> com.hgtv.app.ui.pages.DetailErrorPane(message = detailError!!) { detailSeriesId = null }
-                data == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("加载中…", color = Dim, fontSize = 16.sp)
-                }
+                data == null -> com.hgtv.app.ui.pages.LoadingPane()
                 else -> DetailPage(
                     seriesId = data.seriesId,
                     detail = data,
@@ -220,7 +251,28 @@ fun AppRoot() {
                         playEpisode = episode
                         playResumeMs = 0L
                     },
+                    onOpenAlbum = { albumOpen = true },
                     onExit = { detailSeriesId = null },
+                )
+            }
+        }
+    }
+
+    // 合集覆盖层（票17 Q6-B 全屏，详情之上）。Box 级 BackHandler 同款兜底加载中窗口
+    if (detailSeriesId != null && playEpisode == null && albumOpen) {
+        BackHandler { albumOpen = false }
+        Box(Modifier.fillMaxSize().background(Bg)) {
+            when {
+                albumError != null -> com.hgtv.app.ui.pages.DetailErrorPane(message = albumError!!) { albumOpen = false }
+                albumData == null -> com.hgtv.app.ui.pages.LoadingPane()
+                else -> com.hgtv.app.ui.pages.AlbumPage(
+                    album = albumData!!,
+                    currentSeasonIndex = detailData?.seasonIndex ?: 0,
+                    onOpenSeason = { sid ->
+                        albumOpen = false
+                        openDetail(sid)
+                    },
+                    onExit = { albumOpen = false },
                 )
             }
         }

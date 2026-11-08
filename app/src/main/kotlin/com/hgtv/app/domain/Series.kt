@@ -37,6 +37,38 @@ data class SeriesDetail(
     val categories: List<String>,
     /** 热度展示文案（"红果热度值12万"）。 */
     val heat: String,
+    /** 属于多季合集 = true（详情页"查看合集"按钮门控，D6-A：单季剧零打扰零配额）。 */
+    val isMultiSeason: Boolean = false,
+    /** 本季在合集内的季序号（1 起；0 = 单季/未知）。仅用于合集页当前季高亮（Q7-B：详情页标题不标季角标）。 */
+    val seasonIndex: Int = 0,
     /** 按 number 排序去重后 1..n 连续重编号的选集。 */
     val episodes: List<Episode>,
 )
+
+/** 合集（CONTEXT.md）：多季短剧各季构成的整体；简介只在合集级，季无每季简介。 */
+data class Album(
+    val title: String,
+    val description: String,
+    val seasons: List<Season>,
+)
+
+/** 季（CONTEXT.md）：合集内的一项，本身即一部短剧（以 seriesId 打开详情）。 */
+data class Season(
+    val seriesId: String,
+    /** 季序号，从 1 起。 */
+    val index: Int,
+    /** 总集数；0 = 未上线季（合集页置灰不可点）。 */
+    val episodeCount: Int,
+    /** 已完结 = true。注意：SDK seasons() 主路径只有当前请求季携带真实 status，其余季为默认值——文案可能偏保守。 */
+    val finished: Boolean,
+) {
+    /** 已上线 = 有分集可看。 */
+    val released: Boolean get() = episodeCount > 0
+}
+
+/** 季卡状态文案（合集页）：未上线优先于一切（episodeCount=0 的季即使带完结状态也是未上线）。 */
+fun seasonStatusLabel(season: Season): String = when {
+    !season.released -> "未上线"
+    season.finished -> "已完结"
+    else -> "连载中"
+}

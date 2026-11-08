@@ -2,13 +2,16 @@ package com.hgtv.app.data
 
 import android.content.Context
 import android.util.Log
+import com.hgtv.app.domain.Album
 import com.hgtv.app.domain.Episode
 import com.hgtv.app.domain.Playback
 import com.hgtv.app.domain.SeriesCard
+import com.hgtv.app.domain.Season
 import com.hgtv.app.domain.SeriesDetail
 import com.hgtv.app.domain.StreamException
 import com.hgtv.app.domain.Suggestion
 import com.hgtv.app.domain.contentKeyFromHex
+import dev.openhongguo.Album as SdkAlbum
 import dev.openhongguo.ClientOptions
 import dev.openhongguo.HotSearch
 import dev.openhongguo.InfoKind
@@ -100,6 +103,10 @@ class OpenhongguoSource(
         val detail = batch.firstOrNull() ?: throw IllegalStateException("短剧不存在或暂时不可见")
         return mapSeriesDetail(detail, seriesId)
     }
+
+    /** 合集（票17）：SDK seasons() 一发全季（含未上线季与三级退化，均内建）。
+     *  仅多季剧详情的"查看合集"可达（D6-A），单季剧零配额。 */
+    suspend fun seasons(seriesId: String): Album = mapAlbum(tryCall { client.seasons(seriesId.trim()) })
 
     /** 元数据调用统一异常面：SDK 错误文案复用播放链的格式（含 code/重试窗口）。 */
     private suspend fun <T> tryCall(block: suspend () -> T): T = try {
@@ -269,9 +276,33 @@ class OpenhongguoSource(
                 heat = series.subtitles.firstOrNull { it.contains("热度") }
                     ?: series.playCount.takeIf { it > 0 }?.let(::formatCount)
                     ?: "",
+                isMultiSeason = series.isMultiSeason,
+                seasonIndex = series.seasonIndex,
                 episodes = episodes,
             )
         }
+
+        /** SDK 合集 → domain（纯函数，离线可测）：滤空 id、去重（AlbumPage grid 以 seriesId
+         *  为 key，退化路径重复 id 会组合期抛异常）、按季序稳定排序（SDK 已排，防御退化路径）。
+         *  未上线季 = episodeCount 0（SDK 夹具形态：即将上线的季 episode_cnt=0，且打不开详情）。
+         *  状态事实：seasons() 主路径（详情页系列剧行）只有当前请求季携带真实 status，其余季为
+         *  默认连载——非当前季文案可能偏保守，可接受（票17 拍板不另花配额校正）。 */
+        internal fun mapAlbum(album: SdkAlbum): Album = Album(
+            title = album.title,
+            description = album.description,
+            seasons = album.seasons
+                .filter { it.seriesId.isNotEmpty() }
+                .distinctBy { it.seriesId }
+                .sortedWith(compareBy({ it.index }, { it.seriesId }))
+                .map {
+                    Season(
+                        seriesId = it.seriesId,
+                        index = it.index.coerceAtLeast(1),
+                        episodeCount = it.episodeCount,
+                        finished = it.status == SeriesStatus.END,
+                    )
+                },
+        )
 
         /** 计数万/亿格式化：340000→"34万"、1234567890→"12.3亿"（Literal Locale.ROOT 防千分位）。 */
         internal fun formatCount(n: Long): String = when {

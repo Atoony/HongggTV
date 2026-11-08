@@ -63,6 +63,9 @@ internal fun parseCnNumber(label: String): Int? {
 
 fun chineseSeason(number: Int): String {
     val digits = "零一二三四五六七八九"
+    // 千位兜底退化数据（seasonOf 上限 200，但 mapAlbum 的 index 来自 SDK 不设限）：
+    // digits[n/100] 千位越界直接闪退，改回阿拉伯数字不炸组合期
+    if (number > 999 || number < 0) return number.toString()
     if (number < 10) return digits[number].toString()
     if (number < 100) {
         var prefix = ""
