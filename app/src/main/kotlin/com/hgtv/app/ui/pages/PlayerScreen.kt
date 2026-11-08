@@ -1,6 +1,9 @@
 package com.hgtv.app.ui.pages
 
+import android.app.Activity
+import android.util.Log
 import android.view.KeyEvent
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -76,6 +79,9 @@ import com.hgtv.app.domain.Playback
 import com.hgtv.app.domain.StreamException
 import com.hgtv.app.domain.Episode
 import com.hgtv.app.player.CencDecryptDataSourceFactory
+import com.hgtv.app.player.PlaybackPreloadCache
+import com.hgtv.app.player.preloadPlayback
+import com.hgtv.app.player.shouldAutoNext
 import com.hgtv.app.ui.focusScale
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
@@ -96,6 +102,7 @@ private const val SAVE_INTERVAL_MS = 5_000L
 private const val CONTROLS_AUTO_HIDE_MS = 5_000L
 private const val OSD_DURATION_MS = 3_000L
 private const val RECONNECT_LIMIT = 3
+private const val TAG = "HgtvPlayer"
 
 /** 倍速档位（操作栏倍速弹层）：短剧场景偏快档 */
 private val SPEED_OPTIONS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -125,6 +132,14 @@ fun PlayerScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val player = remember { ExoPlayer.Builder(context).build() }
 
+    // 票16 D1-A：播放器常亮——进播放器给 Activity window 加 FLAG_KEEP_SCREEN_ON，退出即清；
+    // 覆盖暂停/缓冲/错误页全部状态（Netflix 惯例：暂停≠离开），无需权限
+    DisposableEffect(context) {
+        val window = (context as? Activity)?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+
     var currentEpisode by rememberSaveable { mutableIntStateOf(startEpisode) }
     var options by remember { mutableStateOf<List<Playback.Line>>(emptyList()) }
     // 播放级内容密钥（票12 实测：每集独立、集内跨线路共享），明文流为 null
@@ -148,6 +163,9 @@ fun PlayerScreen(
     var resumeMs by remember { mutableLongStateOf(startPositionMs) }
     var lastLoadedEpisode by remember { mutableIntStateOf(-1) } // -1 = 尚未装载过
     var switchOsdPending by remember { mutableStateOf(false) } // 换集 READY 后把"正在切换…"换成"第N集"
+    // 票16 D2-A/D3-A：下一集预解析——READY 信号 tick + 按集缓存（会话级，随播放器销毁）
+    var readyTick by remember { mutableIntStateOf(0) }
+    val preloadCache = remember { PlaybackPreloadCache() }
 
     val stageFocus = remember { FocusRequester() }
     val pauseFocus = remember { FocusRequester() }
@@ -207,7 +225,12 @@ fun PlayerScreen(
         buffering = true
         error = null
         try {
-            val playback = source.playback(ep.episodeId)
+            // 票16：错误页重试弃缓存强制现取（直链可能已过期）；装载先查预载缓存
+            // （未超龄命中直用），未命中现取（同集在途预载则等它，防配额双耗）
+            if (loadToken > 0) preloadCache.invalidate(ep.episodeId)
+            val cached = preloadCache.get(ep.episodeId)
+            if (cached != null) Log.d(TAG, "预载命中：第${ep.number}集")
+            val playback = cached ?: preloadCache.loadDedup(ep.episodeId) { source.playback(it) }
             options = playback.lines
             contentKey = playback.contentKey
             prepareAt(startAt)
@@ -216,6 +239,16 @@ fun PlayerScreen(
         } catch (e: Exception) {
             error = PlayError("E-1001", e.message ?: "取流失败")
         }
+    }
+
+    // 票16 D2-A/D3-A：当前集 READY 后按决策后台预解析下一集（失败静默、已缓存不重复发起；
+    // autoNext 关/无下一集不发起，已发起的缓存谁取谁用）。readyTick==0 = 尚未 READY 过，
+    // 须挡住初次组合触发——否则装载还没成功就抢发预载，白耗匿名配额
+    LaunchedEffect(readyTick, autoNext) {
+        if (readyTick == 0 || !shouldAutoNext(autoNext, currentEpisode, episodeCount)) return@LaunchedEffect
+        val next = episodes.firstOrNull { it.number == currentEpisode + 1 } ?: return@LaunchedEffect
+        val ok = preloadPlayback(next.episodeId, preloadCache) { source.playback(it) }
+        if (ok) Log.d(TAG, "已预载第${next.number}集") else Log.d(TAG, "预载第${next.number}集失败（静默）")
     }
 
     // OSD 3s 自动消失
@@ -250,12 +283,13 @@ fun PlayerScreen(
                 if (state == Player.STATE_READY) {
                     durationMs = player.duration
                     reconnects = 0
+                    readyTick++ // 票16：READY 信号（驱动下一集预载）
                     if (switchOsdPending) {
                         switchOsdPending = false
                         osd = "第${currentEpisode}集"
                     }
                 }
-                if (state == Player.STATE_ENDED && autoNext && currentEpisode < episodeCount) {
+                if (state == Player.STATE_ENDED && shouldAutoNext(autoNext, currentEpisode, episodeCount)) {
                     currentEpisode += 1
                 }
             }
