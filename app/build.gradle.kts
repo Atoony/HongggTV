@@ -24,8 +24,8 @@ android {
         applicationId = "com.hgtv.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = 2
+        versionName = "0.0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -103,8 +103,11 @@ dependencies {
     // 海报加载
     implementation("io.coil-kt:coil-compose:2.6.0")
 
-    // 数据源层（ADR 0001 换芯）：一切红果数据经此 SDK，锁 0.2.0
-    implementation("io.github.beilunyang:openhongguo:0.2.0")
+    // 数据源层（ADR 0001 换芯）：一切红果数据经此 SDK。
+    // 临时本地 AAR = 上游 main@015a388（0.2.0 + Argus/Ladon 播放签名修复 + 弹幕 API）：
+    // 2026-11-10 起服务端在 video_model/v1/ 校验 x-argus/x-ladon，Maven 0.2.0 播放被判
+    // 200+空 body；Maven 发新版后切回坐标依赖并删除 app/libs 下该 AAR。
+    implementation(files("libs/openhongguo-0.2.1-signfix.aar"))
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
