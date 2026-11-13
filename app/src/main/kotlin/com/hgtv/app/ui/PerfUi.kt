@@ -1,12 +1,17 @@
 package com.hgtv.app.ui
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.hgtv.app.perf.DevicePerf
@@ -25,6 +30,33 @@ fun focusScale(focused: Boolean, focusedScale: Float = 1.04f): Float {
         label = "focusScale",
     )
     return if (DevicePerf.profile.focusScaleAnimation) animated else if (focused) focusedScale else 1f
+}
+
+/** 焦点浮起投影高度（dp）：深色底上拉层次，聚焦时随缩放一起生效。 */
+private val FocusLiftShadow = 10.dp
+
+/**
+ * 焦点放大浮起（2026-11-13 拍板方案 A，替代裸 graphicsLayer 缩放）：
+ * 缩放是绘制级、布局占位不变，放大溢出会被父级 Lazy* 的 clipToBounds 裁掉——封面
+ * "只见中间"的根因；溢出完整显示由各页 Lazy 容器 contentPadding 预留（配套改动）。
+ * 1.04x 每边溢出约 3dp，远小于卡片间距（8-16dp），不会压邻卡，故无需 zIndex 置顶——
+ * 曾加 zIndex 盖邻，模拟器实测在「更多›」行尾卡上间歇性触发幽灵切页（一次 RIGHT 直跳
+ * 历史页，2026-11-13 两轮铁证；复现不稳定，根因未深挖），收益为零风险为真，已移除。
+ * 圆角投影提供焦点层次；低端机投影同缩放跳动画直落。
+ */
+@Composable
+fun Modifier.focusLift(focused: Boolean, focusedScale: Float = 1.04f, shape: Shape): Modifier {
+    val scale = focusScale(focused, focusedScale)
+    val shadowTarget = if (focused) FocusLiftShadow else 0.dp
+    val animatedShadow by animateDpAsState(shadowTarget, tween(120), label = "focusLiftShadow")
+    val animated = DevicePerf.profile.focusScaleAnimation
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+            this.shape = shape
+            shadowElevation = (if (animated) animatedShadow else shadowTarget).toPx()
+        }
 }
 
 /** 封面请求：低端机限宽 ≤400px（SPEC §8 封面压缩）。 */

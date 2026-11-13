@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.hgtv.app.domain.SeriesDetail
-import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.focusLift
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
@@ -317,13 +317,12 @@ private enum class ChipState { WATCHED, CURRENT, NORMAL }
 private fun ResumeButton(episode: Int, focusRequester: FocusRequester, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     Box(
         Modifier
             .width(250.dp)
             .height(56.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = shape)
             .clip(shape)
             .background(PrimarySoft, shape)
             .border(2.dp, if (focused) Primary else Color.Transparent, shape)
@@ -340,11 +339,10 @@ private fun ResumeButton(episode: Int, focusRequester: FocusRequester, onClick: 
 private fun ActionChipButton(text: String, focusRequester: FocusRequester? = null, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     var m = Modifier
         .height(56.dp)
-        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .focusLift(focused, shape = shape)
         .clip(shape)
         .background(KeySurface, shape)
         .border(2.dp, if (focused) Primary else Color.Transparent, shape)
@@ -381,7 +379,6 @@ private fun EpisodeTab(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun EpisodeChip(index: Int, state: ChipState, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (state) {
         ChipState.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)
@@ -392,7 +389,7 @@ private fun EpisodeChip(index: Int, state: ChipState, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .height(48.dp) // SPEC：chip ≥48dp 高
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = shape)
             .clip(shape)
             .background(bg, shape)
             .border(2.dp, if (focused) Primary else border, shape)
@@ -435,7 +432,7 @@ fun RetryButton(onClick: () -> Unit, text: String, focusRequester: FocusRequeste
     var m = Modifier
         .height(52.dp)
         .width(200.dp)
-        .graphicsLayer { scaleX = if (focused) 1.04f else 1f; scaleY = if (focused) 1.04f else 1f }
+        .focusLift(focused, shape = shape)
         .clip(shape)
         .background(Primary, shape)
         .border(2.dp, if (focused) OnBg else Color.Transparent, shape)

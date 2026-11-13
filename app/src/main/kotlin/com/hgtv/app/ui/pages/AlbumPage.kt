@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,7 +40,7 @@ import com.hgtv.app.domain.Album
 import com.hgtv.app.domain.Season
 import com.hgtv.app.domain.chineseSeason
 import com.hgtv.app.domain.seasonStatusLabel
-import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.focusLift
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -82,11 +81,12 @@ fun AlbumPage(
     }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(horizontal = 48.dp, vertical = 32.dp)) {
-        // 页头：合集名 + 共N季 + 合集级简介（季无每季简介，CONTEXT.md）
+        // 页头：合集名 + 共N季 + 合集级简介（季无每季简介，CONTEXT.md）；start 4dp 与季卡对齐
         Text(
             album.title.ifEmpty { "合集" },
             style = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = OnBg),
             maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 4.dp),
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -106,7 +106,8 @@ fun AlbumPage(
             columns = GridCells.Fixed(4),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            // 预留焦点放大溢出区（方案 A）：季卡 1.04x 上下/左右溢 ~2-4dp
+            contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 24.dp),
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
             itemsIndexed(album.seasons, key = { _, s -> s.seriesId }) { index, season ->
@@ -131,7 +132,6 @@ private fun SeasonCard(
     val released = season.released
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     // 当前季金框（SeasonGold）标记；聚焦时 Primary 焦点框优先（焦点视觉全 app 唯一口径）。
     // 未上线季聚焦用暗框（Dim）——可聚焦可浏览但不可点（Netflix 惯例），不与正常焦点框混淆
@@ -144,7 +144,7 @@ private fun SeasonCard(
     var m = Modifier
         .fillMaxWidth()
         .height(112.dp)
-        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .focusLift(focused, shape = shape)
         .clip(shape)
         .background(if (released) KeySurface else KeySurfaceDim, shape)
         .border(if (current && !focused) 3.dp else 2.dp, borderColor, shape)

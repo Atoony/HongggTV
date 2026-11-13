@@ -81,7 +81,7 @@ fun HistoryPage(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("历史", style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold), color = OnBg)
+            Text("历史", style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold), color = OnBg, modifier = Modifier.padding(start = 4.dp))
             if (historyReady && history.isNotEmpty()) ClearButton(onClear)
         }
         when {
@@ -96,7 +96,8 @@ fun HistoryPage(
                     columns = GridCells.Fixed(6),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    // 预留焦点放大溢出区（方案 A）：1.06x 上下溢 ~9dp/左右 ~4dp，留 bounds 内不被裁
+                    contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 24.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->

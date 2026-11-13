@@ -33,7 +33,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +44,7 @@ import coil.compose.AsyncImage
 import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.domain.SeriesCard
-import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.focusLift
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
@@ -103,8 +102,11 @@ fun HomePage(
             item {
                 // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
                 val resumePrefetch = rememberRowPrefetch(history.map { it.cover })
+                // contentPadding 预留焦点放大溢出区（方案 A）：1.04x 海报卡上下溢 ~6dp/左右 ~3dp，
+                // 留在 LazyRow bounds 内不被 clipToBounds 裁；start 4dp 同时让首卡聚焦左缘完整
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
                 ) {
                     itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
                         PosterCard(
@@ -131,6 +133,7 @@ fun HomePage(
                     val rankPrefetch = rememberRowPrefetch(rankList.map { it.cover })
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
                     ) {
                         itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
                             PosterCard(
@@ -165,12 +168,13 @@ fun HomePage(
 
 @Composable
 private fun RowHeader(text: String) {
-    Text(text, style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold), color = OnBg)
+    // start 4dp 与海报卡对齐（LazyRow contentPadding start 同值）
+    Text(text, style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold), color = OnBg, modifier = Modifier.padding(start = 4.dp))
 }
 
 @Composable
 private fun RowHint(text: String) {
-    Text(text, fontSize = 14.sp, color = Dim)
+    Text(text, fontSize = 14.sp, color = Dim, modifier = Modifier.padding(start = 4.dp))
 }
 
 /** 海报卡（DESIGN §6）：9:16 海报、左下角标（scrim 底，季号 seasonGold）、底缘 3dp 进度条（progress 非空才画）。 */
@@ -189,14 +193,13 @@ fun PosterCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused, focusedScale)
     LaunchedEffect(focused) {
         if (focused) onFocused?.invoke()
     }
     Column(
         modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, focusedScale, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(Surface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
@@ -274,12 +277,11 @@ private fun MoreCard(onClick: () -> Unit) {
 private fun ActionCard(text: String, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     Box(
         Modifier
             .width(150.dp)
             .aspectRatio(9f / 16f)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(Surface)
             .border(2.dp, if (focused) Primary else Color.Transparent, RoundedCornerShape(12.dp))

@@ -38,7 +38,6 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -335,7 +334,6 @@ private fun SidebarItem(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     // 选中框跟随焦点（TV 惯例）；当前页在未聚焦时以左侧竖条标记
     val highlighted = focused || selected
@@ -344,7 +342,7 @@ private fun SidebarItem(
         Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = shape)
             .clip(shape)
             .background(if (highlighted) PrimarySoft else Color.Transparent, shape)
             .border(
@@ -384,11 +382,10 @@ private fun SidebarItem(
 fun PlaceholderCard(text: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     Box(
         modifier
             .size(width = 128.dp, height = 224.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(Surface)
             .border(
