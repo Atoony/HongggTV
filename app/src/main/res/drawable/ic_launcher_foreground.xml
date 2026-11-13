@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标改版（B HG 字标）：自适应图标前景层——几何粗笔画 HG + 珊瑚→金渐变墨水 + 底部短线。
+     坐标由 512 全幅设计按 0.1688 缩放落位，整体收在中心 66dp 安全区圆内（对角线 63.4dp）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- H 左竖 -->
+    <path
+        android:pathData="M30.5,35.8 V64.1"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+    <!-- H 右竖 -->
+    <path
+        android:pathData="M44,35.8 V64.1"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+    <!-- H 中横 -->
+    <path
+        android:pathData="M30.5,50 H44"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+    <!-- G 环（右上开口） -->
+    <path
+        android:pathData="M75.8,43.7 A13.5,13.5 0 1 0 77.4,51.9"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+    <!-- G 右入横笔 -->
+    <path
+        android:pathData="M77.4,51.9 H66.5"
+        android:fillColor="#00000000"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+    <!-- 底部渐变短线 -->
+    <path
+        android:pathData="M35.9,72.4 H72.4"
+        android:fillColor="#00000000"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="28" android:startY="54"
+                android:endX="80" android:endY="54"
+                android:startColor="#FFFF6B3D"
+                android:centerColor="#FFFF9A4E"
+                android:endColor="#FFFFD479" />
+        </aapt:attr>
+    </path>
+</vector>

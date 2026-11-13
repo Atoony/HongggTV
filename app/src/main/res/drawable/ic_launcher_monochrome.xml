@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标改版（B HG 字标）：Android 13+ 单色主题层——纯白笔画，系统着色（坐标同前景层） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M30.5,35.8 V64.1 M44,35.8 V64.1 M30.5,50 H44 M75.8,43.7 A13.5,13.5 0 1 0 77.4,51.9 M77.4,51.9 H66.5 M35.9,72.4 H72.4"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="5.1"
+        android:strokeLineCap="round" />
+</vector>

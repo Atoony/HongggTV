@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标改版（B HG 字标）：自适应图标背景层——深炭纵向渐变 + 珊瑚偏置辉光（与全幅版同语言） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="0"
+                android:endX="54" android:endY="108"
+                android:startColor="#FF171A21"
+                android:endColor="#FF0B0D11" />
+        </aapt:attr>
+    </path>
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="50" android:centerY="39"
+                android:gradientRadius="66"
+                android:startColor="#1FFF7043"
+                android:endColor="#00FF7043" />
+        </aapt:attr>
+    </path>
+</vector>
