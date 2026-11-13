@@ -49,7 +49,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -84,7 +83,7 @@ import com.hgtv.app.player.PlaybackPreloadCache
 import com.hgtv.app.player.preloadPlayback
 import com.hgtv.app.player.shouldAutoNext
 import com.hgtv.app.ui.DanmakuCanvas
-import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.focusLift
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -718,13 +717,12 @@ private fun ControlButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     // ⚠️ focusRequester 必须在 clickable（产生 focusable 的地方）之前：挂在其后不绑定，
     // requestFocus() 抛 "not attached" 被外层吞掉——2026-11-07 播放器呼出后焦点爬行的根因
     var m = Modifier
         .height(44.dp)
-        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .focusLift(focused, shape = shape)
     if (focusRequester != null) m = m.focusRequester(focusRequester)
     m = m
         .clip(shape)
@@ -900,7 +898,6 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale = focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (look) {
         ChipLook.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)
@@ -910,7 +907,7 @@ private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifie
     Box(
         modifier
             .height(48.dp)
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .focusLift(focused, shape = shape)
             .clip(shape)
             .background(bg, shape)
             .border(2.dp, if (focused) Primary else border, shape)
