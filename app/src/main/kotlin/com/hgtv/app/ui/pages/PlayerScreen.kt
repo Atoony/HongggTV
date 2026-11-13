@@ -174,6 +174,10 @@ fun PlayerScreen(
     fun pickOption(): Playback.Line? =
         options.filter { it.quality <= preferredQuality }.maxByOrNull { it.quality } ?: options.maxByOrNull { it.quality }
 
+    // 展示口径用"实际在播线路"档位而非偏好上限：上限（默认 1080）高于本集线路时实际播的是
+    // 回落后的档位，按钮/弹层若显示上限会与画面不符、且弹层里上限不在选项中导致无当前项高亮
+    val activeQuality = pickOption()?.quality
+
     fun prepareAt(positionMs: Long) {
         val option = pickOption() ?: run {
             error = PlayError("E-1003", "无可用播放线路")
@@ -427,7 +431,7 @@ fun PlayerScreen(
                 isPlaying = isPlaying,
                 durationMs = durationMs,
                 speedLabel = "${speed}x",
-                qualityLabel = "${preferredQuality}P",
+                qualityLabel = "${activeQuality ?: preferredQuality}P",
                 pauseFocus = pauseFocus,
                 onPrev = { if (currentEpisode > 1) currentEpisode -= 1 },
                 onNext = { if (currentEpisode < episodeCount) currentEpisode += 1 },
@@ -470,12 +474,14 @@ fun PlayerScreen(
             OptionPopup(
                 title = "清晰度",
                 options = options.map { it.quality }.distinct().sortedDescending().map { "${it}P" },
-                current = "${preferredQuality}P",
+                current = activeQuality?.let { "${it}P" },
                 initialFocus = popupFocus,
                 onPick = { label ->
                     val q = label.removeSuffix("P").toInt()
-                    if (q != preferredQuality) {
-                        preferredQuality = q
+                    // 上限照收紧（跨集偏好），但仅当选后实际线路会变才原地换流——
+                    // 如上限 1080 实际本就播 720，点"720P"不该断流重载同一条线路
+                    preferredQuality = q
+                    if (q != activeQuality) {
                         prepareAt(player.currentPosition)
                         osd = "清晰度 $label"
                     }

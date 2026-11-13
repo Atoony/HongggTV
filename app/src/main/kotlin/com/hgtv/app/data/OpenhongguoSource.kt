@@ -151,7 +151,10 @@ class OpenhongguoSource(
             val lines = playback.streams
                 .filterNot { it.hls || it.dash }
                 .map { s ->
-                    val height = (s.height.takeIf { it > 0 })
+                    // 档位口径 = 短边：竖屏短剧服务端 definition 即短边口径（"1080p" = 1080x1920），
+                    // 取物理高度会把 1080p 档标成 1920P，且默认上限 1080 匹配不到它（实测掉到 540p 档）
+                    val height = (minOf(s.width, s.height).takeIf { s.width > 0 && s.height > 0 })
+                        ?: (s.height.takeIf { it > 0 })
                         ?: QUALITY_NUMBER.find(s.definition)?.value?.toIntOrNull()
                         ?: s.width
                     Playback.Line(

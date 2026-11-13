@@ -24,6 +24,7 @@ class PlaybackMappingTest {
     private fun sdkStream(
         definition: String = "1080p",
         height: Int = 1080,
+        width: Int = 0,
         codec: String = "bytevc1",
         url: String = "https://cdn.example.com/v.mp4",
         backupUrl: String = "https://cdn.example.com/v-bak.mp4",
@@ -31,7 +32,7 @@ class PlaybackMappingTest {
         dash: Boolean = false,
     ) = Stream(
         definition = definition, quality = "normal", codec = codec,
-        width = 0, height = height, bitrate = 0, size = 0,
+        width = width, height = height, bitrate = 0, size = 0,
         url = url, backupUrl = backupUrl,
         hls = hls, dash = dash, protected = true, encryption = "cenc-aes-ctr",
     )
@@ -71,6 +72,34 @@ class PlaybackMappingTest {
         assertTrue(playback.lines.all { it.urls == listOf("https://cdn.example.com/v.mp4", "https://cdn.example.com/v-bak.mp4") })
         assertEquals(16, playback.contentKey!!.size)
         assertEquals(0xe7, playback.contentKey[0].toInt() and 0xff)
+    }
+
+    /** 2026-11-13 实测（军需处长的账本）：竖屏流 w/h 都有且 h=物理高度（1080p 档 = 1080x1920），
+     *  档位须归一到短边口径，否则 UI 标 1920P 且默认上限 1080 匹配不到最高档。 */
+    @Test
+    fun `竖屏流档位归一到短边而非物理高度`() {
+        val playback = mapPlayback(
+            result(
+                listOf(
+                    sdkStream(definition = "1080p", width = 1080, height = 1920),
+                    sdkStream(definition = "720p", width = 720, height = 1280),
+                    sdkStream(definition = "540p", width = 540, height = 960),
+                    sdkStream(definition = "480p", width = 480, height = 854),
+                    sdkStream(definition = "360p", width = 360, height = 640),
+                )
+            ),
+            "7700000000000000001",
+        )
+        assertEquals(listOf(1080, 720, 540, 480, 360), playback.lines.map { it.quality })
+    }
+
+    @Test
+    fun `无宽高流仍走 definition 数字兜底`() {
+        val playback = mapPlayback(
+            result(listOf(sdkStream(definition = "720p", height = 0))),
+            "7700000000000000001",
+        )
+        assertEquals(listOf(720), playback.lines.map { it.quality })
     }
 
     @Test
