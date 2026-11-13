@@ -22,6 +22,17 @@ class StreamException(val code: String, message: String) : Exception("[$code] $m
 }
 
 /**
+ * 弹幕（CONTEXT.md）：挂在分集播放时间线上的滚动评论。只读，本应用不发送；服务端只下发
+ * 精选的一部分且每台匿名设备条数不同。数据里没有颜色/类型/发送者字段——样式由本应用
+ * 统一定，垫层只留 text/offsetMs。
+ */
+data class Danmaku(
+    val text: String,
+    /** 在分集时间线上的出现时刻（毫秒）。 */
+    val offsetMs: Long,
+)
+
+/**
  * 播放模型（CONTEXT.md）：一个分集的播放信息。密钥每集独立、集内跨线路共享（票12 实测），
  * 故 [contentKey] 挂播放级而非线路级。
  */

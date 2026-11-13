@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -74,6 +75,7 @@ import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.data.PlayerSettingsStore
 import com.hgtv.app.data.WatchEntry
 import com.hgtv.app.data.WatchStore
+import com.hgtv.app.domain.Danmaku
 import com.hgtv.app.domain.Playback
 import com.hgtv.app.domain.StreamException
 import com.hgtv.app.domain.Episode
@@ -81,7 +83,8 @@ import com.hgtv.app.player.CencDecryptDataSourceFactory
 import com.hgtv.app.player.PlaybackPreloadCache
 import com.hgtv.app.player.preloadPlayback
 import com.hgtv.app.player.shouldAutoNext
-import com.hgtv.app.ui.focusLift
+import com.hgtv.app.ui.DanmakuCanvas
+import com.hgtv.app.ui.focusScale
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -156,6 +159,11 @@ fun PlayerScreen(
     val autoNext by settings.autoNext.collectAsState(initial = PlayerSettingsStore.AUTO_NEXT_DEFAULT)
     // 倍速：DataStore 持久化，Flow 初值为默认 1.0，真实持久值到达后由下方 effect 应用
     val speed by settings.speed.collectAsState(initial = PlayerSettingsStore.SPEED_DEFAULT)
+    // 弹幕开关：DataStore 持久化（票19 ⑤，默认开）；关闭即卸载画布
+    val danmakuOn by settings.danmaku.collectAsState(initial = PlayerSettingsStore.DANMAKU_DEFAULT)
+    // 当前集弹幕（票19 ⑥：每集 READY 后现拉，换集即弃旧集；0 条静默不挂画布）
+    var danmakuItems by remember { mutableStateOf<List<Danmaku>>(emptyList()) }
+    var danmakuFetchedFor by remember { mutableStateOf<String?>(null) }
     var preferredQuality by rememberSaveable { mutableIntStateOf(1080) }
     var loadToken by remember { mutableIntStateOf(0) } // 换集/重试信号
     // 断点续播：最近已知播放位置（5s 快照 + 出错时捕获），错误页重试从这续播而非 startPositionMs
@@ -252,6 +260,28 @@ fun PlayerScreen(
         val next = episodes.firstOrNull { it.number == currentEpisode + 1 } ?: return@LaunchedEffect
         val ok = preloadPlayback(next.episodeId, preloadCache) { source.playback(it) }
         if (ok) Log.d(TAG, "已预载第${next.number}集") else Log.d(TAG, "预载第${next.number}集失败（静默）")
+    }
+
+    // 票19 ⑥：换集立即弃旧集数据（不等新集 READY——旧集弹幕不得飘在新集开场画面上，
+    // code-review 2026-11-13）；退播放器随组合取消清状态。
+    LaunchedEffect(currentEpisode) {
+        danmakuItems = emptyList()
+    }
+
+    // 票19 ⑥：每集 READY 后现拉弹幕（Q7-A 不预载；readyTick 信号与预载同构一套策略）。
+    // 同集成功结果（非空）按 episodeId 去重不重复花配额；失败/本集无弹幕返回空不记
+    // 去重键——同集再次 READY（错误页重试/切清晰度重载）可重试，一次瞬时失败不会
+    // 让该集整个会话无弹幕（code-review 2026-11-13）。
+    LaunchedEffect(readyTick, currentEpisode) {
+        if (readyTick == 0) return@LaunchedEffect
+        val ep = episodes.firstOrNull { it.number == currentEpisode } ?: return@LaunchedEffect
+        if (danmakuFetchedFor == ep.episodeId) return@LaunchedEffect
+        danmakuItems = emptyList()
+        val got = source.fetchDanmaku(seriesId, ep.episodeId)
+        if (currentEpisode != ep.number) return@LaunchedEffect // 拉取期间又换集则弃
+        danmakuItems = got
+        if (got.isNotEmpty()) danmakuFetchedFor = ep.episodeId
+        Log.d(TAG, "弹幕第${ep.number}集：${got.size}条")
     }
 
     // OSD 3s 自动消失
@@ -369,6 +399,12 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize().align(Alignment.Center),
         )
 
+        // 弹幕画布（票19）：挂在视频层之上、OSD/选项栏之下——选集抽屉盖右侧时露出画面
+        // 的弹幕继续飘；错误页整页替换时不挂。开关关闭/0 条静默卸载（空态不耗帧循环）。
+        if (danmakuOn && error == null && danmakuItems.isNotEmpty()) {
+            DanmakuCanvas(player = player, items = danmakuItems, modifier = Modifier.fillMaxSize())
+        }
+
         // 态 1 纯净观看：←→ seek ±10s；↓/OK 呼出选项栏
         if (overlay == OverlayState.NONE && error == null) {
             Box(
@@ -431,6 +467,7 @@ fun PlayerScreen(
                 durationMs = durationMs,
                 speedLabel = "${speed}x",
                 qualityLabel = "${activeQuality ?: preferredQuality}P",
+                danmakuOn = danmakuOn,
                 pauseFocus = pauseFocus,
                 onPrev = { if (currentEpisode > 1) currentEpisode -= 1 },
                 onNext = { if (currentEpisode < episodeCount) currentEpisode += 1 },
@@ -438,6 +475,11 @@ fun PlayerScreen(
                 onSpeed = { overlay = OverlayState.SPEED },
                 onQuality = { overlay = OverlayState.QUALITY },
                 onSettings = { overlay = OverlayState.SETTINGS },
+                onDanmaku = {
+                    val next = !danmakuOn
+                    scope.launch { settings.setDanmaku(next) }
+                    osd = if (next) "弹幕 开" else "弹幕 关"
+                },
                 onDismiss = { overlay = OverlayState.NONE },
             )
         }
@@ -512,8 +554,10 @@ fun PlayerScreen(
             }
             SettingsPanel(
                 autoNext = autoNext,
+                danmaku = danmakuOn,
                 initialFocus = settingsFocus,
                 onAutoNext = { v -> scope.launch { settings.setAutoNext(v) } },
+                onDanmaku = { v -> scope.launch { settings.setDanmaku(v) } },
                 onClose = { overlay = OverlayState.CONTROLS },
             )
         }
@@ -546,6 +590,7 @@ private fun BoxScope.ControlsBar(
     durationMs: Long,
     speedLabel: String,
     qualityLabel: String,
+    danmakuOn: Boolean,
     pauseFocus: FocusRequester,
     onPrev: () -> Unit,
     onNext: () -> Unit,
@@ -553,6 +598,7 @@ private fun BoxScope.ControlsBar(
     onSpeed: () -> Unit,
     onQuality: () -> Unit,
     onSettings: () -> Unit,
+    onDanmaku: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var hideTick by remember { mutableIntStateOf(0) }
@@ -622,6 +668,14 @@ private fun BoxScope.ControlsBar(
             ControlButton("☰", fontSize = 18.sp, horizontal = 15.dp, onClick = { onEpisodes(); hideTick++ })
             ControlButton(speedLabel, onClick = onSpeed)
             ControlButton(qualityLabel, onClick = onQuality)
+            // 弹幕开关（票19 ④：清晰度之后 ⚙ 之前）；开=高亮态，一键开关+OSD
+            ControlButton(
+                "💬",
+                fontSize = 18.sp,
+                horizontal = 15.dp,
+                selected = danmakuOn,
+                onClick = { onDanmaku(); hideTick++ },
+            )
             ControlButton("⚙", fontSize = 18.sp, horizontal = 15.dp, onClick = { onSettings(); hideTick++ })
         }
     }
@@ -664,12 +718,13 @@ private fun ControlButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(8.dp)
     // ⚠️ focusRequester 必须在 clickable（产生 focusable 的地方）之前：挂在其后不绑定，
     // requestFocus() 抛 "not attached" 被外层吞掉——2026-11-07 播放器呼出后焦点爬行的根因
     var m = Modifier
         .height(44.dp)
-        .focusLift(focused, shape = shape)
+        .graphicsLayer { scaleX = scale; scaleY = scale }
     if (focusRequester != null) m = m.focusRequester(focusRequester)
     m = m
         .clip(shape)
@@ -845,6 +900,7 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val scale = focusScale(focused)
     val shape = RoundedCornerShape(4.dp)
     val (bg, fg, border) = when (look) {
         ChipLook.WATCHED -> Triple(KeySurfaceDim, Faint, Color.Transparent)
@@ -854,7 +910,7 @@ private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifie
     Box(
         modifier
             .height(48.dp)
-            .focusLift(focused, shape = shape)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(shape)
             .background(bg, shape)
             .border(2.dp, if (focused) Primary else border, shape)
@@ -865,12 +921,14 @@ private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifie
     }
 }
 
-/** 态 2' 设置：自动连播开关（清晰度/倍速 2026-11-07 挪操作栏后仅剩此项）。 */
+/** 态 2' 设置：自动连播/弹幕开关（清晰度/倍速 2026-11-07 挪操作栏后剩此两项）。 */
 @Composable
 private fun SettingsPanel(
     autoNext: Boolean,
+    danmaku: Boolean,
     initialFocus: FocusRequester,
     onAutoNext: (Boolean) -> Unit,
+    onDanmaku: (Boolean) -> Unit,
     onClose: () -> Unit,
 ) {
     Column(
@@ -881,6 +939,10 @@ private fun SettingsPanel(
         Text("自动连播（${if (autoNext) "开" else "关"}）", color = OnBgVariant, fontSize = 14.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ControlButton(if (autoNext) "开" else "关", onClick = { onAutoNext(!autoNext) }, focusRequester = initialFocus)
+        }
+        Text("弹幕（${if (danmaku) "开" else "关"}）", color = OnBgVariant, fontSize = 14.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ControlButton(if (danmaku) "开" else "关", onClick = { onDanmaku(!danmaku) })
         }
         ControlButton("返回", onClick = onClose)
     }

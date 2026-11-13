@@ -3,6 +3,7 @@ package com.hgtv.app.data
 import android.content.Context
 import android.util.Log
 import com.hgtv.app.domain.Album
+import com.hgtv.app.domain.Danmaku
 import com.hgtv.app.domain.Episode
 import com.hgtv.app.domain.Playback
 import com.hgtv.app.domain.SeriesCard
@@ -13,6 +14,8 @@ import com.hgtv.app.domain.Suggestion
 import com.hgtv.app.domain.contentKeyFromHex
 import dev.openhongguo.Album as SdkAlbum
 import dev.openhongguo.ClientOptions
+import dev.openhongguo.DanmakuOptions
+import dev.openhongguo.DanmakuPage
 import dev.openhongguo.HotSearch
 import dev.openhongguo.InfoKind
 import dev.openhongguo.OpenhongguoClient
@@ -27,6 +30,7 @@ import dev.openhongguo.SeriesSummary
 import dev.openhongguo.ShortRanking
 import dev.openhongguo.Suggestion as SdkSuggestion
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 
 /** 搜索中列候选（票11 三列）：联想词 + 直达卡，一次 suggest 调用拆两区。 */
 data class SuggestColumns(
@@ -107,6 +111,11 @@ class OpenhongguoSource(
     /** 合集（票17）：SDK seasons() 一发全季（含未上线季与三级退化，均内建）。
      *  仅多季剧详情的"查看合集"可达（D6-A），单季剧零配额。 */
     suspend fun seasons(seriesId: String): Album = mapAlbum(tryCall { client.seasons(seriesId.trim()) })
+
+    /** 一集弹幕（票19）：串行翻页到 hasMore=false 一把聚合（全量进本地，拖动重定位零请求）。
+     *  失败静默返回空列表——弹幕拉不到当没弹幕，绝不挡播放、不弹错误页。 */
+    suspend fun fetchDanmaku(seriesId: String, episodeId: String): List<Danmaku> =
+        collectDanmaku { cursor -> client.listDanmaku(seriesId.trim(), episodeId, DanmakuOptions(cursor = cursor)) }
 
     /** 元数据调用统一异常面：SDK 错误文案复用播放链的格式（含 code/重试窗口）。 */
     private suspend fun <T> tryCall(block: suspend () -> T): T = try {
@@ -285,6 +294,36 @@ class OpenhongguoSource(
             )
         }
 
+        /**
+         * 弹幕串行翻页聚合（票19，纯函数离线可测）：null 游标起读，翻到 hasMore=false 为止；
+         * 空窗口仍可能 hasMore=true 须继续翻（SDK 文档口径）；防御 hasMore=true 而 cursor 空
+         * （终止防死循环）与恒 hasMore 不收敛（[DANMAKU_MAX_PAGES] 刹车）。失败静默为空列表，
+         * 取消直抛（票14 坑：吞取消会误吞退出播放器时的作用域取消）。形态事实见票19 探针纪要。
+         */
+        internal suspend fun collectDanmaku(
+            fetchPage: suspend (cursor: String?) -> DanmakuPage,
+        ): List<Danmaku> = try {
+            val out = ArrayList<Danmaku>()
+            var cursor: String? = null
+            var pages = 0
+            while (pages < DANMAKU_MAX_PAGES) {
+                if (pages > 0) delay(DANMAKU_PAGE_BACKOFF_MS) // 页间退避（票09 纪律；探针实测该间隔零频控）
+                val page = fetchPage(cursor)
+                pages++
+                for (item in page.items) {
+                    val text = item.text.trim()
+                    if (text.isNotEmpty()) out += Danmaku(text = text, offsetMs = item.offsetMs)
+                }
+                if (!page.hasMore || page.cursor.isEmpty()) break
+                cursor = page.cursor
+            }
+            out.sortedBy { it.offsetMs }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList() // 失败静默：当没弹幕（票19 拍板，绝不挡播放）
+        }
+
         /** SDK 合集 → domain（纯函数，离线可测）：滤空 id、去重（AlbumPage grid 以 seriesId
          *  为 key，退化路径重复 id 会组合期抛异常）、按季序稳定排序（SDK 已排，防御退化路径）。
          *  未上线季 = episodeCount 0（SDK 夹具形态：即将上线的季 episode_cnt=0，且打不开详情）。
@@ -318,5 +357,11 @@ class OpenhongguoSource(
             String.format(java.util.Locale.ROOT, "%.1f", v).removeSuffix(".0")
 
         private const val SUGGEST_WORDS_MAX = 10
+
+        /** 弹幕翻页刹车：上游一集 3~6 页（票19 探针），40 页远超正常形态，防不收敛耗配额。 */
+        internal const val DANMAKU_MAX_PAGES = 40
+
+        /** 页间退避（票09 频控纪律；票19 探针 450ms 间隔实测零频控，code-review 2026-11-13）。 */
+        internal const val DANMAKU_PAGE_BACKOFF_MS = 450L
     }
 }

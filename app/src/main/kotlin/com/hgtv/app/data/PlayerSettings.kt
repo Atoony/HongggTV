@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.map
 
 private val Context.playerSettingsDataStore by preferencesDataStore(name = "player_settings")
 
-/** 播放器设置（SPEC §3.4 态2'）：自动连播/倍速持久化，跨会话生效。 */
+/** 播放器设置（SPEC §3.4 态2'）：自动连播/倍速/弹幕持久化，跨会话生效。 */
 class PlayerSettingsStore(private val context: Context) {
 
     companion object {
@@ -19,6 +19,10 @@ class PlayerSettingsStore(private val context: Context) {
 
         private val SPEED = floatPreferencesKey("playback_speed")
         const val SPEED_DEFAULT = 1.0f
+
+        /** 票19：弹幕默认开（两轮拍板 Q5-A）。 */
+        private val DANMAKU = booleanPreferencesKey("danmaku")
+        const val DANMAKU_DEFAULT = true
     }
 
     val autoNext: Flow<Boolean> = context.playerSettingsDataStore.data.map { prefs ->
@@ -35,5 +39,13 @@ class PlayerSettingsStore(private val context: Context) {
 
     suspend fun setSpeed(value: Float) {
         context.playerSettingsDataStore.edit { it[SPEED] = value }
+    }
+
+    val danmaku: Flow<Boolean> = context.playerSettingsDataStore.data.map { prefs ->
+        prefs[DANMAKU] ?: DANMAKU_DEFAULT
+    }
+
+    suspend fun setDanmaku(value: Boolean) {
+        context.playerSettingsDataStore.edit { it[DANMAKU] = value }
     }
 }
