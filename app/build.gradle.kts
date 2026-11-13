@@ -120,3 +120,32 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
+
+// ── 真机数据保护闸（2026-11-13 事故教训）─────────────────────────────────────
+// 设备级任务（connected*/install*）会吃掉 adb devices 里所有在线设备，且 AGP 在
+// debug/release 签名冲突时会自动 uninstall 再装——当天曾把 BRAVIA 真机上的正式包
+// 连同观看历史等数据一起清掉（手动 adb install -r 遇签名冲突只会报错、不动已装包）。
+// 因此：任何非模拟器设备在线、且未用 ANDROID_SERIAL 限定目标时，直接拒绝执行。
+// 真机装包统一走 scripts/tv-install.sh（同签名 install -r 覆盖，数据保留）。
+tasks.matching { it.name.startsWith("connected") || it.name.startsWith("install") }.configureEach {
+    doFirst {
+        if (System.getenv("ANDROID_SERIAL") != null) return@doFirst
+        val adb = File(
+            android.sdkDirectory,
+            "platform-tools/" + (if (System.getProperty("os.name").lowercase().contains("win")) "adb.exe" else "adb"),
+        )
+        if (!adb.exists()) return@doFirst
+        val proc = ProcessBuilder(adb.absolutePath, "devices").start()
+        val online = proc.inputStream.bufferedReader().readLines()
+            .filter { it.endsWith("\tdevice") }
+            .map { it.substringBefore('\t') }
+            .filter { !it.startsWith("emulator-") }
+        if (online.isNotEmpty()) {
+            throw GradleException(
+                "真机在线（${online.joinToString()}）：设备级 gradle 任务会在所有设备上执行，" +
+                    "签名冲突时 AGP 自动卸载重装会清掉真机 App 数据。请设 ANDROID_SERIAL=<模拟器id> 限定后重跑；" +
+                    "真机装包走 scripts/tv-install.sh。",
+            )
+        }
+    }
+}
