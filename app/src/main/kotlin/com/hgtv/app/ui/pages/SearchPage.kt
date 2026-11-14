@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,6 +61,9 @@ import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.domain.SeriesCard
 import com.hgtv.app.domain.Suggestion
 import com.hgtv.app.domain.seasonOf
+import com.hgtv.app.ui.SectionHeader
+import com.hgtv.app.ui.focusGlow
+import com.hgtv.app.ui.keyGlow
 import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.KeySurface
@@ -69,6 +73,8 @@ import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.Outline
 import com.hgtv.app.ui.theme.Primary
 import com.hgtv.app.ui.theme.PrimarySoft
+import com.hgtv.app.ui.theme.ShimmerScope
+import com.hgtv.app.ui.theme.SkeletonBlock
 import kotlinx.coroutines.delay
 
 /** 搜索历史（进程内 LRU + SharedPreferences 持久，最多 10 条）。 */
@@ -351,6 +357,56 @@ private fun QueryBox(query: String, pinyinMode: Boolean) {
     }
 }
 
+/** 右列：搜索历史（LRU 竖排 + 清空）+ 热门（hotSearch 真源，票14 换芯）。 */
+@Composable
+private fun RightColumn(
+    history: List<String>,
+    hotWords: List<String>,
+    onPickHistory: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onPickHotWord: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier.fillMaxHeight(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        // 条目 focusGlow 缩放溢出+边缘外描边的安全区：LazyColumn 按组件 bounds 裁切绘制，
+        // 无横向 padding 时行式条目左右溢出全被裁（评审 finding）
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        item(key = "history-head") {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
+                SectionHeader("搜索历史", count = if (history.isEmpty()) null else "${history.size} 条", modifier = Modifier.weight(1f))
+                if (history.isNotEmpty()) {
+                    Text(
+                        "清空",
+                        color = Dim,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(KeySurfaceDim)
+                            .clickable(onClick = onClearHistory)
+                            .padding(horizontal = 10.dp, vertical = 3.dp),
+                    )
+                }
+            }
+        }
+        if (history.isEmpty()) {
+            item(key = "history-empty") { Text("暂无搜索历史", color = Dim, fontSize = 13.sp) }
+        } else {
+            items(history, key = { "history-$it" }) { word ->
+                CandidateItem(word, onClick = { onPickHistory(word) })
+            }
+        }
+        if (hotWords.isNotEmpty()) {
+            item(key = "hot-head") { SectionHeader("热门", count = "${hotWords.size} 条", modifier = Modifier.padding(top = 8.dp)) }
+            itemsIndexed(hotWords, key = { i, _ -> "hot-$i" }) { i, word ->
+                CandidateItem(word, leading = "${i + 1}", onClick = { onPickHotWord(word) })
+            }
+        }
+    }
+}
+
 /** 空态（DESIGN §6）：虚线描边框 + 居中提示 + 行动建议。 */
 @Composable
 private fun EmptyNotice(text: String) {
@@ -419,16 +475,19 @@ private fun MiddleColumn(
                 state = listState,
                 modifier = modifier.fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(top = 4.dp),
+                // top 4 候选区起始 + horizontal 12 缩放溢出/描边安全区（同 RightColumn）
+                contentPadding = PaddingValues(start = 12.dp, top = 4.dp, end = 12.dp),
             ) {
                 candidateSection(
                     label = "联想",
+                    countUnit = "条",
                     entries = suggestions.map { SuggestionCandidate(it.text, "") { onPickSuggestion(it.text) } },
                     firstFocus = if (firstRow == 0) firstCandidateFocus else null,
                 )
                 // 直达：自带 seriesId，直连详情（票15：不走 doSearch 再烧一发 search 匿名配额）
                 candidateSection(
                     label = "直达",
+                    countUnit = "部",
                     entries = nameHits.take(NAME_HITS_SHOWN).map {
                         SuggestionCandidate(it.title, episodeBadge(it)) { onOpenDetail(it.seriesId) }
                     },
@@ -436,6 +495,7 @@ private fun MiddleColumn(
                 )
                 candidateSection(
                     label = "拼音",
+                    countUnit = "条",
                     entries = pinyinCandidates.map { SuggestionCandidate(it, "") { onPickPinyin(it) } },
                     firstFocus = if (firstRow == 2) firstCandidateFocus else null,
                 )
@@ -456,11 +516,12 @@ private class SuggestionCandidate(val text: String, val sub: String, val onPick:
 
 private fun LazyListScope.candidateSection(
     label: String,
+    countUnit: String,
     entries: List<SuggestionCandidate>,
     firstFocus: FocusRequester?,
 ) {
     if (entries.isEmpty()) return
-    item(key = "${label}-head") { SectionLabel(label) }
+    item(key = "${label}-head") { SectionHeader(label, count = "${entries.size} $countUnit", modifier = Modifier.padding(top = 8.dp)) }
     itemsIndexed(entries, key = { i, _ -> "$label-$i" }) { i, entry ->
         CandidateItem(
             text = entry.text,
@@ -469,58 +530,6 @@ private fun LazyListScope.candidateSection(
             onClick = entry.onPick,
         )
     }
-}
-
-/** 右列：搜索历史（LRU 竖排 + 清空）+ 热门（hotSearch 真源，票14 换芯）。 */
-@Composable
-private fun RightColumn(
-    history: List<String>,
-    hotWords: List<String>,
-    onPickHistory: (String) -> Unit,
-    onClearHistory: () -> Unit,
-    onPickHotWord: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    LazyColumn(
-        modifier.fillMaxHeight(),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        item(key = "history-head") {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("搜索历史", color = Primary, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                if (history.isNotEmpty()) {
-                    Text(
-                        "清空",
-                        color = Dim,
-                        fontSize = 13.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(KeySurfaceDim)
-                            .clickable(onClick = onClearHistory)
-                            .padding(horizontal = 10.dp, vertical = 3.dp),
-                    )
-                }
-            }
-        }
-        if (history.isEmpty()) {
-            item(key = "history-empty") { Text("暂无搜索历史", color = Dim, fontSize = 13.sp) }
-        } else {
-            items(history, key = { "history-$it" }) { word ->
-                CandidateItem(word, onClick = { onPickHistory(word) })
-            }
-        }
-        if (hotWords.isNotEmpty()) {
-            item(key = "hot-head") { SectionLabel("热门") }
-            itemsIndexed(hotWords, key = { i, _ -> "hot-$i" }) { i, word ->
-                CandidateItem(word, leading = "${i + 1}", onClick = { onPickHotWord(word) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(text, color = Primary, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
 }
 
 /** B 站样式条目：整行可聚焦，主文本 + 可选副文本/序号。 */
@@ -538,9 +547,9 @@ private fun CandidateItem(
         modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
+            .focusGlow(focused, shape = RoundedCornerShape(8.dp))
             .clip(RoundedCornerShape(8.dp))
             .background(if (focused) PrimarySoft else KeySurface)
-            .border(1.dp, if (focused) Primary else Color.Transparent, RoundedCornerShape(8.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -637,6 +646,8 @@ private fun androidx.compose.foundation.layout.RowScope.KeyButton(
             .weight(weight)
             .height(44.dp) // 4 行→7 行竖向预算紧，52→44（2026-11-07 blbl 6×6）
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            // 键盘焦点键（DESIGN §3 v2）：键面 primary + 白字白描边 + 8dp 轻辉光（keyGlow）
+            .keyGlow(focused, shape = RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Primary else KeySurface)
             .onFocusChanged { if (it.isFocused) onFocusGained() }
@@ -655,6 +666,7 @@ private fun androidx.compose.foundation.layout.RowScope.SearchKey(onFocusGained:
         Modifier
             .weight(2.2f)
             .height(44.dp)
+            .keyGlow(focused, shape = RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color(0xFFFF8A65) else Primary)
             .onFocusChanged { if (it.isFocused) onFocusGained() }
@@ -680,27 +692,40 @@ private fun ResultGrid(
         Row(
             Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
             BackKey(onBack, modifier = Modifier.focusRequester(entryFocus))
-            Text(
-                if (loading) "正在搜索「$word」…" else "「$word」的结果（${dramas.size} 部）",
-                color = OnBg,
-                fontSize = 18.sp,
-            )
+            SectionHeader("「$word」的结果", count = dramas.takeIf { !loading }?.size?.let { "$it 部" })
         }
-        if (!loading && dramas.isEmpty()) {
+        if (loading) {
+            // 搜索骨架（票20 §5 骨架四处之一）：与结果网格同构，两行卡片占位原位替换
+            ShimmerScope {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    repeat(2) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            repeat(6) {
+                                SkeletonBlock(
+                                    Modifier.weight(1f).aspectRatio(9f / 16f),
+                                    shape = RoundedCornerShape(5.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (dramas.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("没有找到「$word」相关短剧", color = Dim, fontSize = 16.sp)
             }
-        } else if (!loading) {
+        } else {
             // 列表懒加载预取（SPEC §8）：焦点卡后 ahead 张海报预热
             val prefetcher = rememberRowPrefetch(dramas.map { it.cover })
             LazyVerticalGrid(
                 columns = GridCells.Fixed(6),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                // 预留焦点放大溢出区（1.07x 上下溢 ~9dp、左右 ~5dp；6dp 同 HomePage/History）
+                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 10.dp, bottom = 24.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
                 itemsIndexed(dramas, key = { _, it -> it.seriesId }) { index, d ->
@@ -727,6 +752,7 @@ private fun BackKey(onClick: () -> Unit, modifier: Modifier = Modifier) {
         modifier
             .height(40.dp)
             .width(88.dp)
+            .focusGlow(focused, shape = RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Primary else KeySurface)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),

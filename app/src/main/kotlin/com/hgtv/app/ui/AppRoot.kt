@@ -3,8 +3,8 @@ package com.hgtv.app.ui
 import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -36,14 +36,18 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
+import com.hgtv.app.R
 import com.hgtv.app.ui.pages.DetailPage
 import com.hgtv.app.ui.pages.HistoryPage
 import com.hgtv.app.ui.pages.HomePage
@@ -51,11 +55,13 @@ import com.hgtv.app.ui.pages.PlayerScreen
 import com.hgtv.app.ui.pages.SearchPage
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
-import com.hgtv.app.ui.theme.KeySurface
 import com.hgtv.app.ui.theme.OnBg
+import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.Primary
 import com.hgtv.app.ui.theme.PrimarySoft
 import com.hgtv.app.ui.theme.Surface
+import com.hgtv.app.ui.theme.hgPageBackground
+import com.hgtv.app.ui.theme.sideBackground
 
 enum class NavDest(val label: String) {
     HOME("首页"),
@@ -170,6 +176,9 @@ fun AppRoot() {
     // 页面切换/覆盖层关闭后重落入口焦点。带重试：入口 requester 由页面首个可见交互组件持有，
     // 数据未就绪/子模式切换（如搜索结果态）时有短暂悬空窗口，一次请求会失败（2026-11-07
     // 实测：详情→搜索结果页返回后焦点掉根部无人捡，且波及后续页面）。
+    // ⚠️ 全 App 入口焦点重试共三处（本处 8×50ms / HomePage v1 回退环 8×50ms / hero 按钮快慢环
+    // 12×60+10×300ms）——停机条件各异（本处=调用成功即停，hero=真实 focused 态校验），不强行
+    // 统一；调窗口时三处一起看（评审 finding #9）。
     LaunchedEffect(current, detailSeriesId, playEpisode) {
         if (detailSeriesId == null && playEpisode == null) {
             repeat(8) {
@@ -200,7 +209,8 @@ fun AppRoot() {
         Box(
             Modifier
                 .weight(1f)
-                .fillMaxHeight(),
+                .fillMaxHeight()
+                .hgPageBackground(),
         ) {
             when (current) {
                 NavDest.HOME -> HomePage(
@@ -240,7 +250,7 @@ fun AppRoot() {
         Box(Modifier.fillMaxSize().background(Bg)) {
             when {
                 detailError != null -> com.hgtv.app.ui.pages.DetailErrorPane(message = detailError!!) { detailSeriesId = null }
-                data == null -> com.hgtv.app.ui.pages.LoadingPane()
+                data == null -> com.hgtv.app.ui.pages.DetailBannerSkeleton()
                 else -> DetailPage(
                     seriesId = data.seriesId,
                     detail = data,
@@ -260,7 +270,7 @@ fun AppRoot() {
     // 合集覆盖层（票17 Q6-B 全屏，详情之上）。Box 级 BackHandler 同款兜底加载中窗口
     if (detailSeriesId != null && playEpisode == null && albumOpen) {
         BackHandler { albumOpen = false }
-        Box(Modifier.fillMaxSize().background(Bg)) {
+        Box(Modifier.fillMaxSize().hgPageBackground()) {
             when {
                 albumError != null -> com.hgtv.app.ui.pages.DetailErrorPane(message = albumError!!) { albumOpen = false }
                 albumData == null -> com.hgtv.app.ui.pages.LoadingPane()
@@ -307,72 +317,114 @@ fun AppRoot() {
 private fun Sidebar(selected: NavDest, onSelect: (NavDest) -> Unit) {
     Column(
         Modifier
-            .width(132.dp)
+            .width(152.dp) // DESIGN §5 v2：132→152
             .fillMaxHeight()
-            .background(Color(0xFF12151B))
-            .padding(horizontal = 12.dp, vertical = 48.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .sideBackground()
+            .padding(horizontal = 14.dp, vertical = 48.dp),
     ) {
-        NavDest.entries.forEach { dest ->
-            SidebarItem(
-                label = dest.label,
-                selected = dest == selected,
-                onClick = { onSelect(dest) },
+        // 品牌壳顶（DESIGN §6 v2 Q4-A）：logo 瓦片 40dp（深炭渐变+珊瑚辉光+HG 字标）+ 应用名
+        Column(
+            Modifier.fillMaxWidth().padding(bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            LogoTile()
+            Text(
+                "红果果短剧",
+                color = OnBgVariant,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 8.dp),
             )
         }
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            NavDest.entries.forEach { dest ->
+                SidebarItem(
+                    dest = dest,
+                    selected = dest == selected,
+                    onClick = { onSelect(dest) },
+                )
+            }
+        }
+    }
+}
+
+/** logo 瓦片（票20）：深炭渐变 + 珊瑚辉光（视觉血缘与 HG 桌面图标一脉）。 */
+@Composable
+private fun LogoTile() {
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(shape)
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF171A21), Color(0xFF0B0D11)),
+                        startY = 0f,
+                        endY = size.height,
+                    ),
+                )
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(Primary.copy(alpha = 0.13f), Color.Transparent),
+                        center = Offset(size.width * 0.46f, size.height * 0.36f),
+                        radius = size.height * 0.62f,
+                    ),
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_hg_wordmark),
+            contentDescription = null,
+        )
     }
 }
 
 /** 侧栏项不挂 focusProperties{right} 跳转目标：默认方向搜索找几何最近的可见可交互组件，
  *  且不经过 FocusRequester——自定义目标一旦悬空（页面数据未就绪/结果态键盘卸载），
- *  焦点搜索在框架内解析悬空 requester 直接 IllegalStateException 闪退（2026-11-07 实测）。 */
+ *  焦点搜索在框架内解析悬空 requester 直接 IllegalStateException 闪退（2026-11-07 实测）。
+ *  v2 选中态（Q4-A）：primarySoft 填充 + 2.5dp 描边 + 图标文字点亮，v1 左侧 3dp 竖条退役。 */
 @Composable
 private fun SidebarItem(
-    label: String,
+    dest: NavDest,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(8.dp)
-    // 选中框跟随焦点（TV 惯例）；当前页在未聚焦时以左侧竖条标记
-    val highlighted = focused || selected
+    val shape = RoundedCornerShape(10.dp)
+    val icon = when (dest) {
+        NavDest.HOME -> R.drawable.ic_nav_home
+        NavDest.SEARCH -> R.drawable.ic_nav_search
+        NavDest.HISTORY -> R.drawable.ic_nav_history
+    }
+    val lit = focused || selected
 
-    Box(
+    Row(
         Modifier
             .fillMaxWidth()
             .height(56.dp)
-            .focusLift(focused, shape = shape)
+            .focusGlow(focused, shape = shape, showBorder = lit)
             .clip(shape)
-            .background(if (highlighted) PrimarySoft else Color.Transparent, shape)
-            .border(
-                width = 2.dp,
-                color = if (focused) Primary else Color.Transparent,
-                shape = shape,
-            )
-            .drawBehind {
-                if (selected && !focused) {
-                    drawRoundRect(
-                        color = Primary,
-                        topLeft = Offset(0f, size.height * 0.22f),
-                        size = Size(3.dp.toPx(), size.height * 0.56f),
-                    )
-                }
-            }
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
+            .background(if (selected) PrimarySoft else Color.Transparent, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = if (lit) OnBg else Dim,
+            modifier = Modifier.size(20.dp),
+        )
         Text(
-            text = label,
+            text = dest.label,
             style = TextStyle(
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
             ),
-            color = when {
-                selected -> OnBg
-                focused -> OnBg
-                else -> Dim
-            },
+            color = if (lit) OnBg else Dim,
         )
     }
 }
@@ -385,14 +437,9 @@ fun PlaceholderCard(text: String, modifier: Modifier = Modifier, onClick: () -> 
     Box(
         modifier
             .size(width = 128.dp, height = 224.dp)
-            .focusLift(focused, shape = RoundedCornerShape(12.dp))
+            .focusGlow(focused, shape = RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(Surface)
-            .border(
-                width = 2.dp,
-                color = if (focused) Primary else Color(0x00000000),
-                shape = RoundedCornerShape(12.dp),
-            )
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -408,6 +455,28 @@ fun PageTitle(text: String) {
         color = OnBg,
         modifier = Modifier.padding(bottom = 16.dp),
     )
+}
+
+/** 分区标题（DESIGN §4 v2，Q6-C 纯排版）：20sp/600 无饰件 + 计数后缀
+ *  （13sp onBgVariant 基线对齐，文案"· N 部/条"）。 */
+@Composable
+fun SectionHeader(text: String, count: String? = null, modifier: Modifier = Modifier) {
+    Row(modifier) {
+        Text(
+            text,
+            style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
+            color = OnBg,
+            modifier = Modifier.alignByBaseline(),
+        )
+        if (count != null) {
+            Text(
+                "· $count",
+                fontSize = 13.sp,
+                color = OnBgVariant,
+                modifier = Modifier.alignByBaseline().padding(start = 4.dp),
+            )
+        }
+    }
 }
 
 @Composable

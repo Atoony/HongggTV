@@ -40,8 +40,7 @@ import com.hgtv.app.domain.Album
 import com.hgtv.app.domain.Season
 import com.hgtv.app.domain.chineseSeason
 import com.hgtv.app.domain.seasonStatusLabel
-import com.hgtv.app.ui.focusLift
-import com.hgtv.app.ui.theme.Bg
+import com.hgtv.app.ui.focusGlow
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
 import com.hgtv.app.ui.theme.KeySurface
@@ -80,7 +79,7 @@ fun AlbumPage(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Bg).padding(horizontal = 48.dp, vertical = 32.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
         // 页头：合集名 + 共N季 + 合集级简介（季无每季简介，CONTEXT.md）；start 4dp 与季卡对齐
         Text(
             album.title.ifEmpty { "合集" },
@@ -133,7 +132,7 @@ private fun SeasonCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val shape = RoundedCornerShape(8.dp)
-    // 当前季金框（SeasonGold）标记；聚焦时 Primary 焦点框优先（焦点视觉全 app 唯一口径）。
+    // 当前季金框（SeasonGold）标记；聚焦时 Primary 辉光焦点优先（焦点视觉全 app 唯一口径）。
     // 未上线季聚焦用暗框（Dim）——可聚焦可浏览但不可点（Netflix 惯例），不与正常焦点框混淆
     val borderColor = when {
         focused && released -> Primary
@@ -144,10 +143,17 @@ private fun SeasonCard(
     var m = Modifier
         .fillMaxWidth()
         .height(112.dp)
-        .focusLift(focused, shape = shape)
+        // 未上线季聚焦：Dim 描边 + Dim 辉光（ringColor 同步降级）——可聚焦可浏览不可点，
+        // 焦点视觉整体降档不与正常 Primary 焦点混淆（Netflix 惯例）
+        .focusGlow(
+            focused,
+            shape = shape,
+            borderColor = if (released) Primary else Dim,
+            ringColor = if (released) Primary else Dim,
+        )
         .clip(shape)
         .background(if (released) KeySurface else KeySurfaceDim, shape)
-        .border(if (current && !focused) 3.dp else 2.dp, borderColor, shape)
+        .border(if (current && !focused) 3.dp else 2.dp, if (focused) Color.Transparent else borderColor, shape)
     if (focusRequester != null) m = m.focusRequester(focusRequester) // 未上线卡 focusable 也可持有入口焦点（全未上线兜底）
     // 未上线季置灰不可点：不挂 clickable，但挂 focusable 持焦——否则整页方向搜索可能无目标
     // （单 released 卡在首列时 RIGHT 清焦点穿透到下层，2026-11-08 模拟器实测；CENTER 无反应即"不可点"）

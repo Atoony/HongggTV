@@ -83,7 +83,8 @@ import com.hgtv.app.player.PlaybackPreloadCache
 import com.hgtv.app.player.preloadPlayback
 import com.hgtv.app.player.shouldAutoNext
 import com.hgtv.app.ui.DanmakuCanvas
-import com.hgtv.app.ui.focusLift
+import com.hgtv.app.ui.focusGlow
+import com.hgtv.app.ui.glowBorder
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.Faint
@@ -722,12 +723,11 @@ private fun ControlButton(
     // requestFocus() 抛 "not attached" 被外层吞掉——2026-11-07 播放器呼出后焦点爬行的根因
     var m = Modifier
         .height(44.dp)
-        .focusLift(focused, shape = shape)
+        .focusGlow(focused, shape = shape)
     if (focusRequester != null) m = m.focusRequester(focusRequester)
     m = m
         .clip(shape)
         .background(if (focused || selected) PrimarySoft else KeySurface, shape)
-        .border(2.dp, if (focused) Primary else Color.Transparent, shape)
         .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     Box(m.padding(horizontal = horizontal), contentAlignment = Alignment.Center) {
         Text(text, color = if (focused) OnBg else if (selected) Primary else OnBgVariant, fontSize = fontSize)
@@ -788,9 +788,12 @@ private fun SeekBar(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit, 
         modifier
             .fillMaxWidth()
             .height(if (focused) 14.dp else 10.dp)
+            // 进度条不缩放不投影（自带高度生长态），只换辉光描边焦点；
+            // glowBorder 必须在 clip 之前——描边/辉光画在组件边缘外（glowStrokes 外扩几何），
+            // 挂 clip 之后会被裁掉（评审 finding：全项目 focusGlow 链序规范的唯一违例）
+            .glowBorder(focused, shape = RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(if (focused) Color(0x33FFFFFF) else ProgressTrack)
-            .border(2.dp, if (focused) Primary else Color.Transparent, RoundedCornerShape(6.dp))
             .clickable(interactionSource = interaction, indication = null) {}
             .onPreviewKeyEvent { e ->
                 if (!focused) return@onPreviewKeyEvent false
@@ -883,9 +886,9 @@ private fun TabButton(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .height(40.dp)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(if (selected) PrimarySoft else KeySurfaceDim, shape)
-            .border(2.dp, if (focused) Primary else Color.Transparent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center,
@@ -907,10 +910,11 @@ private fun ChipOverlay(index: Int, look: ChipLook, modifier: Modifier = Modifie
     Box(
         modifier
             .height(48.dp)
-            .focusLift(focused, shape = shape)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(bg, shape)
-            .border(2.dp, if (focused) Primary else border, shape)
+            // 状态描边只在未聚焦时显示；聚焦时由 focusGlow 的焦点描边接管
+            .border(2.dp, if (focused) Color.Transparent else border, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

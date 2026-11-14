@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,12 +39,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hgtv.app.data.WatchEntry
+import com.hgtv.app.ui.SectionHeader
+import com.hgtv.app.ui.focusGlow
 import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
 import com.hgtv.app.ui.theme.KeySurface
@@ -51,6 +52,8 @@ import com.hgtv.app.ui.theme.OnBg
 import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.Outline
 import com.hgtv.app.ui.theme.Primary
+import com.hgtv.app.ui.theme.ShimmerScope
+import com.hgtv.app.ui.theme.SkeletonBlock
 
 /** 历史页（SPEC §3.5）：纯网格倒序无筛选；OK 直接续播（跳过详情页）。 */
 @Composable
@@ -79,14 +82,26 @@ fun HistoryPage(
         Row(
             Modifier.fillMaxWidth().padding(bottom = 20.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
         ) {
-            Text("历史", style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold), color = OnBg, modifier = Modifier.padding(start = 4.dp))
+            SectionHeader("历史", count = history.takeIf { historyReady }?.size?.let { "$it 部" }, modifier = Modifier.padding(start = 4.dp))
             if (historyReady && history.isNotEmpty()) ClearButton(onClear)
         }
         when {
-            !historyReady -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("加载中…", color = Dim, fontSize = 16.sp)
+            // 骨架网格（票20 §5）：与结果网格同构，首屏两行原位替换（块群共享扫光时钟）
+            !historyReady -> ShimmerScope {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    repeat(2) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            repeat(6) {
+                                SkeletonBlock(
+                                    Modifier.weight(1f).aspectRatio(9f / 16f),
+                                    shape = RoundedCornerShape(5.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
             history.isEmpty() -> HistoryEmpty()
             else -> {
@@ -96,8 +111,9 @@ fun HistoryPage(
                     columns = GridCells.Fixed(6),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
-                    // 预留焦点放大溢出区（方案 A）：1.06x 上下溢 ~9dp/左右 ~4dp，留 bounds 内不被裁
-                    contentPadding = PaddingValues(start = 4.dp, end = 4.dp, top = 10.dp, bottom = 24.dp),
+                    // 预留焦点放大溢出区（方案 A）：1.08x 上下溢 ~11dp/左右 ~5dp，留 bounds 内不被裁
+                    // 6dp 同 HomePage 行（缩放溢出 ~5dp/边 + 余量；4dp 会裁聚焦卡左右缘，评审 finding）
+                    contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 12.dp, bottom = 24.dp),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
@@ -107,7 +123,7 @@ fun HistoryPage(
                             cover = entry.cover,
                             modifier = Modifier.fillMaxWidth(),
                             progress = entry.progressFraction,
-                            focusedScale = 1.06f, // DESIGN §3：网格卡片可到 1.06x
+                            focusedScale = 1.08f, // DESIGN §3 v2：网格卡片可到 1.08x
                             focusRequester = if (index == 0) entryFocus else null,
                             onFocused = { prefetcher.onFocus(index) },
                             onClick = { onResume(entry) },
@@ -165,6 +181,7 @@ private fun ClearButton(onClear: () -> Unit) {
         Modifier
             .height(40.dp)
             .width(120.dp)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(if (focused) Primary else KeySurface, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClear),

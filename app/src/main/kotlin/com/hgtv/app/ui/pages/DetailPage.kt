@@ -56,7 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.hgtv.app.domain.SeriesDetail
-import com.hgtv.app.ui.focusLift
+import com.hgtv.app.ui.focusGlow
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.theme.Bg
 import com.hgtv.app.ui.theme.Dim
@@ -68,6 +68,9 @@ import com.hgtv.app.ui.theme.OnBgVariant
 import com.hgtv.app.ui.theme.PosterPlaceholder
 import com.hgtv.app.ui.theme.Primary
 import com.hgtv.app.ui.theme.PrimarySoft
+import com.hgtv.app.ui.theme.ShimmerScope
+import com.hgtv.app.ui.theme.SkeletonBlock
+import com.hgtv.app.ui.theme.inkBackground
 
 private const val EPISODE_GROUP = 50
 
@@ -322,10 +325,9 @@ private fun ResumeButton(episode: Int, focusRequester: FocusRequester, onClick: 
         Modifier
             .width(250.dp)
             .height(56.dp)
-            .focusLift(focused, shape = shape)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(PrimarySoft, shape)
-            .border(2.dp, if (focused) Primary else Color.Transparent, shape)
             .focusRequester(focusRequester)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -342,10 +344,9 @@ private fun ActionChipButton(text: String, focusRequester: FocusRequester? = nul
     val shape = RoundedCornerShape(8.dp)
     var m = Modifier
         .height(56.dp)
-        .focusLift(focused, shape = shape)
+        .focusGlow(focused, shape = shape)
         .clip(shape)
         .background(KeySurface, shape)
-        .border(2.dp, if (focused) Primary else Color.Transparent, shape)
     // ⚠️ focusRequester 必须在 clickable（产生 focusable 的地方）之前（2026-11-07 根因修复同款）
     if (focusRequester != null) m = m.focusRequester(focusRequester)
     Box(
@@ -364,9 +365,9 @@ private fun EpisodeTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
             .height(40.dp)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(if (selected) PrimarySoft else KeySurface, shape)
-            .border(2.dp, if (focused) Primary else Color.Transparent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center,
@@ -389,10 +390,11 @@ private fun EpisodeChip(index: Int, state: ChipState, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .height(48.dp) // SPEC：chip ≥48dp 高
-            .focusLift(focused, shape = shape)
+            .focusGlow(focused, shape = shape)
             .clip(shape)
             .background(bg, shape)
-            .border(2.dp, if (focused) Primary else border, shape)
+            // 状态描边只在未聚焦时显示；聚焦时由 focusGlow 的 2.5dp 焦点描边接管
+            .border(2.dp, if (focused) Color.Transparent else border, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -424,6 +426,55 @@ fun LoadingPane() {
     }
 }
 
+/** 详情横幅骨架（票20 §5 骨架四处之一）：与 D4-B 横幅 + tab 行同构，内容到达原位无缝替换。 */
+@Composable
+fun DetailBannerSkeleton() {
+    ShimmerScope {
+        Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 48.dp, end = 48.dp, top = 32.dp, bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+        ) {
+            SkeletonBlock(
+                Modifier.width(156.dp).aspectRatio(9f / 16f),
+                shape = RoundedCornerShape(6.dp),
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SkeletonBlock(Modifier.fillMaxWidth(0.55f).height(34.dp), shape = RoundedCornerShape(6.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.4f).height(16.dp), shape = RoundedCornerShape(4.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.85f).height(16.dp), shape = RoundedCornerShape(4.dp))
+                SkeletonBlock(Modifier.fillMaxWidth(0.7f).height(16.dp), shape = RoundedCornerShape(4.dp))
+                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    SkeletonBlock(Modifier.width(250.dp).height(56.dp), shape = RoundedCornerShape(8.dp))
+                    SkeletonBlock(Modifier.width(140.dp).height(56.dp), shape = RoundedCornerShape(8.dp))
+                }
+            }
+        }
+        Row(
+            Modifier.padding(start = 48.dp, end = 48.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(3) {
+                SkeletonBlock(Modifier.width(96.dp).height(40.dp), shape = RoundedCornerShape(6.dp))
+            }
+        }
+        // 选集网格首屏骨架（两行 chip）
+        Column(
+            Modifier.padding(start = 48.dp, end = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            repeat(2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    repeat(8) {
+                        SkeletonBlock(Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(4.dp))
+                    }
+                }
+            }
+        }
+        }
+    }
+}
+
 @Composable
 fun RetryButton(onClick: () -> Unit, text: String, focusRequester: FocusRequester? = null) {
     val interaction = remember { MutableInteractionSource() }
@@ -432,10 +483,10 @@ fun RetryButton(onClick: () -> Unit, text: String, focusRequester: FocusRequeste
     var m = Modifier
         .height(52.dp)
         .width(200.dp)
-        .focusLift(focused, shape = shape)
+        // 错误页主按钮（DESIGN §2.3 inkStops 三处之一）：墨渐变底 + 白描边焦点
+        .focusGlow(focused, shape = shape, borderColor = Color.White)
         .clip(shape)
-        .background(Primary, shape)
-        .border(2.dp, if (focused) OnBg else Color.Transparent, shape)
+        .inkBackground()
     if (focusRequester != null) m = m.focusRequester(focusRequester)
     Box(
         m.clickable(interactionSource = interaction, indication = null, onClick = onClick),

@@ -50,6 +50,25 @@ internal class TTLCache<T>(private val ttlMs: Long, private val nowMs: () -> Lon
     }
 }
 
+/** 按键 TTL 缓存（详情等多实体数据）：LRU 淘汰。单槽会让"看过别的剧"逐出 hero 的
+ *  缓存条目，回首页 hero 白烧一次匿名配额（评审 finding）。 */
+internal class TTLMapCache<T>(private val ttlMs: Long, private val capacity: Int, private val nowMs: () -> Long) {
+    private val entries = LinkedHashMap<String, Pair<Long, T>>()
+
+    /** 命中未过期值并 LRU 触碰；未写过或已过期返回 null。 */
+    fun get(key: String): T? {
+        val e = entries.remove(key)?.takeIf { nowMs() - it.first < ttlMs } ?: return null
+        entries[key] = e
+        return e.second
+    }
+
+    fun put(key: String, value: T) {
+        entries.remove(key)
+        entries[key] = nowMs() to value
+        while (entries.size > capacity) entries.remove(entries.keys.first())
+    }
+}
+
 /**
  * 数据源层适配（ADR 0001 / CONTEXT.md）：openhongguo SDK 是一切红果数据的唯一入口，
  * SDK 类型只出现在本文件（及其映射测试），出关即 domain 值类型。重试与匿名设备轮换
@@ -65,9 +84,11 @@ class OpenhongguoSource(
         ClientOptions(logger = { Log.d(TAG, it) }), // 设备轮换/重试可观测（logcat tag=OhgSdk）
     )
 
-    /** 热播榜/热门词 5min TTL（Q7 共识：进页不重拉同一数据，防匿名配额浪费）。 */
+    /** 热播榜/热门词/详情 5min TTL（Q7 共识：进页不重拉同一数据，防匿名配额浪费）。 */
     private val rankCache = TTLCache<List<SeriesCard>>(CACHE_TTL_MS, nowMs)
     private val hotWordsCache = TTLCache<List<String>>(CACHE_TTL_MS, nowMs)
+    /** 详情单条缓存（票20 hero：首页 hero 常驻热播榜 NO.1 的详情，回首页/进程内重进不重烧配额）。 */
+    private val detailCache = TTLMapCache<SeriesDetail>(CACHE_TTL_MS, DETAIL_CACHE_CAP, nowMs)
 
     /** 播放模型；episodeId 与红果 videoId 同一 ID 空间（CONTEXT.md 分集）。 */
     suspend fun playback(episodeId: String): Playback = try {
@@ -101,11 +122,15 @@ class OpenhongguoSource(
         mapSearch(tryCall { client.search(query.trim()) })
 
     /** 详情 + 选集：getSeriesBatch 单发（multi_video_detail 一次同回剧与全集，
-     *  比 getSeries+listEpisodes 两发省一半）。 */
+     *  比 getSeries+listEpisodes 两发省一半）。同剧 5min 内走按 sid TTL 缓存（多实体 LRU）。 */
     suspend fun seriesDetail(seriesId: String): SeriesDetail {
-        val batch = tryCall { client.getSeriesBatch(listOf(seriesId.trim())) }
+        val sid = seriesId.trim()
+        detailCache.get(sid)?.let { return it }
+        val batch = tryCall { client.getSeriesBatch(listOf(sid)) }
         val detail = batch.firstOrNull() ?: throw IllegalStateException("短剧不存在或暂时不可见")
-        return mapSeriesDetail(detail, seriesId)
+        val mapped = mapSeriesDetail(detail, sid)
+        detailCache.put(sid, mapped)
+        return mapped
     }
 
     /** 合集（票17）：SDK seasons() 一发全季（含未上线季与三级退化，均内建）。
@@ -131,6 +156,9 @@ class OpenhongguoSource(
     companion object {
         private const val TAG = "OhgSdk"
         private const val CACHE_TTL_MS = 5 * 60_000L
+
+        /** 详情缓存容量：hero(NO.1) + 常规浏览轨迹足够，超容 LRU 淘汰。 */
+        private const val DETAIL_CACHE_CAP = 8
         private val QUALITY_NUMBER = Regex("\\d+")
 
         /** 数字 keyword（≥10 位）= 内容 ID 行（SDK 文档：直达行为内容 ID）。 */
