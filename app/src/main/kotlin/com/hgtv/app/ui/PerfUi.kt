@@ -174,6 +174,35 @@ fun Modifier.focusGlow(
 }
 
 /**
+ * focusGlow 的内容段（graphicsLayer 拆挂，2026-11-15 真机 BRAVIA 帧级实锤）：
+ * 旧 [focusGlow] 把 graphicsLayer(scale) 挂 clickable 外层，focusTarget 的 bounds 上行
+ * 被 scale 放大，bringIntoView 拿「含缩放的 bounds」连环请求滚动——Lazy 容器边缘（首页末行
+ * 热播榜贴滚动底）左右选卡时整页 ±4px 往复抖动。拆挂链序（懒加载行内组件统一）：
+ * `.glowBorder(描边,最外防裁剪) → .clickable(focusTarget,不进 scale) → .focusScaleLayer(本段)`
+ * scale 只变换 clickable 内容，视觉与旧版一致，焦点/无障碍 bounds 恒为布局几何。
+ */
+@Composable
+fun Modifier.focusScaleLayer(
+    focused: Boolean,
+    shape: Shape,
+    focusedScale: Float = 1.07f,
+): Modifier {
+    val scale = focusScale(focused, focusedScale)
+    val animated = DevicePerf.profile.focusScaleAnimation
+    val animatedShadow by animateDpAsState(
+        if (focused) FocusLiftShadow else 0.dp,
+        tween(FocusDurationMs, easing = FocusEasing),
+        label = "focusGlowShadow",
+    )
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+        this.shape = shape
+        if (animated) shadowElevation = animatedShadow.toPx()
+    }
+}
+
+/**
  * 键盘焦点键轻辉光（DESIGN §3：键面 primary + 白字白描边不变，另加 8dp 白辉光）。
  * 键盘键网密排无缩放；辉光同 180ms 曲线，低端档跳变。
  * 几何复用 glowStrokes（边缘外描边 + 辉光圈），只是白描边 2dp + 单圈白辉光。

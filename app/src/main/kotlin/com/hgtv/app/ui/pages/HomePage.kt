@@ -52,6 +52,9 @@ import com.hgtv.app.domain.SeriesCard
 import com.hgtv.app.domain.SeriesDetail
 import com.hgtv.app.ui.SectionHeader
 import com.hgtv.app.ui.focusGlow
+import com.hgtv.app.ui.focusScale
+import com.hgtv.app.ui.focusScaleLayer
+import com.hgtv.app.ui.glowBorder
 import com.hgtv.app.ui.rememberCoverRequest
 import com.hgtv.app.ui.rememberRowPrefetch
 import com.hgtv.app.ui.theme.Dim
@@ -514,13 +517,20 @@ fun PosterCard(
     LaunchedEffect(focused) {
         if (focused) onFocused?.invoke()
     }
+    val cardShape = RoundedCornerShape(12.dp)
+    val scale = focusScale(focused, focusedScale)
     Column(
         modifier
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .focusGlow(focused, shape = RoundedCornerShape(12.dp), focusedScale = focusedScale)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Surface)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            // 链序拆挂（2026-11-15 真机 BRAVIA 帧级实锤）：graphicsLayer(scale) 原挂 clickable
+            // 外层，focusTarget bounds 被 scale 放大 → bringIntoView 拿含缩放 bounds 连环请求
+            // 滚动 → 末行（热播榜）选卡时 LazyColumn 整页 ±4px 往复抖动。现拆为：
+            // 描边最外（票20 防裁剪铁律）→ clickable（focusTarget 不进 scale）→ scale 层只变换内容
+            .glowBorder(focused, cardShape, scale = scale)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .focusScaleLayer(focused, cardShape, focusedScale)
+            .clip(cardShape)
+            .background(Surface),
     ) {
         Box(
             Modifier
