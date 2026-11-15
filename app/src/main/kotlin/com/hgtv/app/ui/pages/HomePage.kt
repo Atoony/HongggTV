@@ -145,7 +145,7 @@ fun HomePage(
             // 预览阶段全按键可见（不消费放行）：用户一动手就不再自动 claim 焦点
             .onPreviewKeyEvent { userTouched.value = true; false }
             .padding(horizontal = 48.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        verticalArrangement = Arrangement.spacedBy(44.dp), // DESIGN §4 v2.1：分区呼吸感（苹果 HIG 层级三件套之一）
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
         // ---- item0：hero。key 恒定、内容三态原位换装（骨架→hero→失败塌陷），绝不移除重插：
@@ -198,11 +198,13 @@ fun HomePage(
                 } else {
                     // 列表懒加载预取（SPEC §8）：焦点落到第 i 张卡时预热其后 ahead 张（低端 2 / 常规 4）
                     val resumePrefetch = rememberRowPrefetch(history.map { it.cover })
-                    // contentPadding 预留焦点放大溢出区（方案 A）：1.07x 海报卡上下溢 ~9dp/左右 ~5dp，
-                    // 留在 LazyRow bounds 内不被 clipToBounds 裁；start 6dp 同时让首卡聚焦左缘完整
+                    // contentPadding 预留焦点放大溢出区：1.07x 海报卡上下溢 ~10dp，余量 14dp 覆盖
+                    // 溢出+2dp；余量不足时 bringIntoView 拿"含缩放的 bounds"对齐视口会扯动外层
+                    // LazyColumn 垂直微滚 ±2px 再回位＝上方行抖动（2026-11-15 帧级二分实锤）；
+                    // start 6dp 同时让首卡聚焦左缘完整
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                        contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
                     ) {
                         itemsIndexed(history, key = { _, it -> it.seriesId }) { index, entry ->
                             PosterCard(
@@ -236,7 +238,8 @@ fun HomePage(
                     val rankPrefetch = rememberRowPrefetch(rankList.map { it.cover })
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                        // 同继续观看行：14dp 余量吸收放大溢出，杜绝 bringIntoView 扯动 LazyColumn（上方行抖动）
+                        contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
                     ) {
                         itemsIndexed(rankList, key = { _, it -> "rank-" + it.seriesId }) { index, item ->
                             PosterCard(

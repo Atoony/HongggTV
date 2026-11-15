@@ -317,10 +317,10 @@ fun AppRoot() {
 private fun Sidebar(selected: NavDest, onSelect: (NavDest) -> Unit) {
     Column(
         Modifier
-            .width(152.dp) // DESIGN §5 v2：132→152
+            .width(88.dp) // DESIGN §5 v2.1：152→88 竖排图标+文字（2026-11-15 拍板：内容区让位 64dp）
             .fillMaxHeight()
             .sideBackground()
-            .padding(horizontal = 14.dp, vertical = 48.dp),
+            .padding(horizontal = 8.dp, vertical = 48.dp),
     ) {
         // 品牌壳顶（DESIGN §6 v2 Q4-A）：logo 瓦片 40dp（深炭渐变+珊瑚辉光+HG 字标）+ 应用名
         Column(
@@ -383,7 +383,8 @@ private fun LogoTile() {
 /** 侧栏项不挂 focusProperties{right} 跳转目标：默认方向搜索找几何最近的可见可交互组件，
  *  且不经过 FocusRequester——自定义目标一旦悬空（页面数据未就绪/结果态键盘卸载），
  *  焦点搜索在框架内解析悬空 requester 直接 IllegalStateException 闪退（2026-11-07 实测）。
- *  v2 选中态（Q4-A）：primarySoft 填充 + 2.5dp 描边 + 图标文字点亮，v1 左侧 3dp 竖条退役。 */
+ *  v2 选中态（Q4-A）：primarySoft 填充 + 2.5dp 描边 + 图标文字点亮，v1 左侧 3dp 竖条退役。
+ *  v2.1 竖排（2026-11-15 拍板）：图标上文字下（Google TV 同款），导航词均两字可窄排。 */
 @Composable
 private fun SidebarItem(
     dest: NavDest,
@@ -400,17 +401,16 @@ private fun SidebarItem(
     }
     val lit = focused || selected
 
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(64.dp)
             .focusGlow(focused, shape = shape, showBorder = lit)
             .clip(shape)
             .background(if (selected) PrimarySoft else Color.Transparent, shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
         Icon(
             painter = painterResource(icon),
@@ -421,7 +421,7 @@ private fun SidebarItem(
         Text(
             text = dest.label,
             style = TextStyle(
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             ),
             color = if (lit) OnBg else Dim,
@@ -457,21 +457,22 @@ fun PageTitle(text: String) {
     )
 }
 
-/** 分区标题（DESIGN §4 v2，Q6-C 纯排版）：20sp/600 无饰件 + 计数后缀
- *  （13sp onBgVariant 基线对齐，文案"· N 部/条"）。 */
+/** 分区标题（DESIGN §4 v2.1 苹果 HIG 层级，2026-11-15 拍板 Q2-B）：26sp/700 无饰件
+ *  + 计数后缀（14sp onBgVariant 基线对齐，文案"· N 部/条"）——层级感=字号差两档
+ *  （卡片标题 13sp）+ 700 字重 + 分区间距 44dp 三件套，与正文拉开扫视层级。 */
 @Composable
 fun SectionHeader(text: String, count: String? = null, modifier: Modifier = Modifier) {
     Row(modifier) {
         Text(
             text,
-            style = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
+            style = TextStyle(fontSize = 26.sp, fontWeight = FontWeight.Bold),
             color = OnBg,
             modifier = Modifier.alignByBaseline(),
         )
         if (count != null) {
             Text(
                 "· $count",
-                fontSize = 13.sp,
+                fontSize = 14.sp,
                 color = OnBgVariant,
                 modifier = Modifier.alignByBaseline().padding(start = 4.dp),
             )
