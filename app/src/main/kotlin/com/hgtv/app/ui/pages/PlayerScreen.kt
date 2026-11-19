@@ -104,6 +104,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val SEEK_STEP_MS = 10_000L
+private const val DOUBLE_TAP_MS = 400L
 private const val SAVE_INTERVAL_MS = 5_000L
 private const val CONTROLS_AUTO_HIDE_MS = 5_000L
 private const val OSD_DURATION_MS = 3_000L
@@ -409,8 +410,12 @@ fun PlayerScreen(
             DanmakuCanvas(player = player, items = danmakuItems, modifier = Modifier.fillMaxSize())
         }
 
-        // 态 1 纯净观看：← 退回上一级（详情页，2026-11-19 用户拍板）；→ seek +10s；↓/OK 呼出选项栏
+        // 态 1 纯净观看：←→ seek ∓10s，400ms 内双击 ←/→ 切上下集（2026-11-19 拍板，← 不再退出）；
+        // ↓/OK 呼出选项栏
+        val goPrev: () -> Unit = { if (currentEpisode > 1) currentEpisode -= 1 }
+        val goNext: () -> Unit = { if (currentEpisode < episodeCount) currentEpisode += 1 }
         if (overlay == OverlayState.NONE && error == null) {
+            var lastTap by remember { mutableStateOf(0 to 0L) } // 上次非 repeat 按键 (keyCode, atMs)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -421,11 +426,23 @@ fun PlayerScreen(
                         // 按键会 KeyDown/KeyUp 各派发一次，只认 KeyDown 防 seek 双跳。
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (e.key.nativeKeyCode) {
-                            KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                onExit(); true
-                            }
-                            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                                player.seekTo((player.currentPosition + SEEK_STEP_MS).coerceAtMost(player.duration)); true
+                            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                val code = e.key.nativeKeyCode
+                                // 长按 repeat 只持续 seek：不进双击检测、不刷新 lastTap，防长按快退被当成双击跳集
+                                val repeat = e.nativeKeyEvent.repeatCount > 0
+                                val now = System.currentTimeMillis()
+                                if (!repeat && lastTap.first == code && now - lastTap.second < DOUBLE_TAP_MS) {
+                                    lastTap = 0 to 0L
+                                    if (code == KeyEvent.KEYCODE_DPAD_LEFT) goPrev() else goNext()
+                                } else {
+                                    if (!repeat) lastTap = code to now
+                                    val target = if (code == KeyEvent.KEYCODE_DPAD_LEFT)
+                                        (player.currentPosition - SEEK_STEP_MS).coerceAtLeast(0)
+                                    else
+                                        (player.currentPosition + SEEK_STEP_MS).coerceAtMost(player.duration)
+                                    player.seekTo(target)
+                                }
+                                true
                             }
                             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                                 overlay = OverlayState.CONTROLS; true
@@ -473,8 +490,8 @@ fun PlayerScreen(
                 qualityLabel = "${activeQuality ?: preferredQuality}P",
                 danmakuOn = danmakuOn,
                 pauseFocus = pauseFocus,
-                onPrev = { if (currentEpisode > 1) currentEpisode -= 1 },
-                onNext = { if (currentEpisode < episodeCount) currentEpisode += 1 },
+                onPrev = goPrev,
+                onNext = goNext,
                 onEpisodes = { overlay = OverlayState.EPISODES },
                 onSpeed = { overlay = OverlayState.SPEED },
                 onQuality = { overlay = OverlayState.QUALITY },
