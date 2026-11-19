@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 播放器操作栏图标（Lucide skip-back, ISC license, lucide.dev）：24 视口 / 2dp 白描边，颜色由 Icon(tint=) 点染。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <path
+        android:pathData="M17.971,4.285 A2,2 0 0 1 21,6 V18 A2,2 0 0 1 17.971,19.715 L7.974,13.717 A2,2 0 0 1 7.971,10.285 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M3,20 V4"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round" />
+</vector>

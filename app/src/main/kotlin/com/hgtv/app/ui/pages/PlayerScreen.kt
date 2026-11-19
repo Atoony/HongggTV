@@ -28,7 +28,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -54,6 +56,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -70,6 +73,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.hgtv.app.R
 import com.hgtv.app.data.OpenhongguoSource
 import com.hgtv.app.data.PlayerSettingsStore
 import com.hgtv.app.data.WatchEntry
@@ -405,7 +409,7 @@ fun PlayerScreen(
             DanmakuCanvas(player = player, items = danmakuItems, modifier = Modifier.fillMaxSize())
         }
 
-        // 态 1 纯净观看：←→ seek ±10s；↓/OK 呼出选项栏
+        // 态 1 纯净观看：← 退回上一级（详情页，2026-11-19 用户拍板）；→ seek +10s；↓/OK 呼出选项栏
         if (overlay == OverlayState.NONE && error == null) {
             Box(
                 Modifier
@@ -418,7 +422,7 @@ fun PlayerScreen(
                         if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (e.key.nativeKeyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
-                                player.seekTo((player.currentPosition - SEEK_STEP_MS).coerceAtLeast(0)); true
+                                onExit(); true
                             }
                             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                 player.seekTo((player.currentPosition + SEEK_STEP_MS).coerceAtMost(player.duration)); true
@@ -651,11 +655,11 @@ private fun BoxScope.ControlsBar(
             Text("${formatMs(pos)} / ${formatMs(durationMs)}", color = OnBgVariant, fontSize = 13.sp)
         }
         Spacer(Modifier.height(12.dp))
-        // 按钮行：暂停紧邻上一集左侧；传输类用图标（2026-11-07 用户拍板），倍速/清晰度显示当前值
+        // 按钮行：暂停紧邻上一集左侧；传输类用 Lucide 矢量图标（2026-11-19 用户拍板换掉
+        // Unicode 符号，与侧栏 ic_nav_* 同规格 24 视口/2dp 描边），倍速/清晰度显示当前值
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             ControlButton(
-                text = if (isPlaying) "⏸" else "▶",
-                fontSize = 18.sp,
+                icon = if (isPlaying) R.drawable.ic_player_pause else R.drawable.ic_player_play,
                 horizontal = 15.dp,
                 focusRequester = pauseFocus,
                 onClick = {
@@ -663,20 +667,20 @@ private fun BoxScope.ControlsBar(
                     hideTick++
                 },
             )
-            ControlButton("⏮", fontSize = 18.sp, horizontal = 15.dp, onClick = { onPrev(); hideTick++ })
-            ControlButton("⏭", fontSize = 18.sp, horizontal = 15.dp, onClick = { onNext(); hideTick++ })
-            ControlButton("☰", fontSize = 18.sp, horizontal = 15.dp, onClick = { onEpisodes(); hideTick++ })
+            ControlButton(icon = R.drawable.ic_player_prev, horizontal = 15.dp, onClick = { onPrev(); hideTick++ })
+            ControlButton(icon = R.drawable.ic_player_next, horizontal = 15.dp, onClick = { onNext(); hideTick++ })
+            ControlButton(icon = R.drawable.ic_player_episodes, horizontal = 15.dp, onClick = { onEpisodes(); hideTick++ })
             ControlButton(speedLabel, onClick = onSpeed)
             ControlButton(qualityLabel, onClick = onQuality)
-            // 弹幕开关（票19 ④：清晰度之后 ⚙ 之前）；开=高亮态，一键开关+OSD
+            // 弹幕开关（票19 ④：清晰度之后设置之前，图标用字幕形——2026-11-19 拍板）；
+            // 开=高亮态，一键开关+OSD
             ControlButton(
-                "💬",
-                fontSize = 18.sp,
+                icon = R.drawable.ic_player_danmaku,
                 horizontal = 15.dp,
                 selected = danmakuOn,
                 onClick = { onDanmaku(); hideTick++ },
             )
-            ControlButton("⚙", fontSize = 18.sp, horizontal = 15.dp, onClick = { onSettings(); hideTick++ })
+            ControlButton(icon = R.drawable.ic_player_settings, horizontal = 15.dp, onClick = { onSettings(); hideTick++ })
         }
     }
 }
@@ -709,7 +713,8 @@ private fun formatMs(ms: Long): String {
 
 @Composable
 private fun ControlButton(
-    text: String,
+    text: String? = null,
+    icon: Int? = null,
     onClick: () -> Unit,
     focusRequester: FocusRequester? = null,
     fontSize: TextUnit = 15.sp,
@@ -730,7 +735,12 @@ private fun ControlButton(
         .background(if (focused || selected) PrimarySoft else KeySurface, shape)
         .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     Box(m.padding(horizontal = horizontal), contentAlignment = Alignment.Center) {
-        Text(text, color = if (focused) OnBg else if (selected) Primary else OnBgVariant, fontSize = fontSize)
+        val fg = if (focused) OnBg else if (selected) Primary else OnBgVariant
+        if (icon != null) {
+            Icon(painter = painterResource(icon), contentDescription = null, tint = fg, modifier = Modifier.size(24.dp))
+        } else {
+            Text(text ?: "", color = fg, fontSize = fontSize)
+        }
     }
 }
 
