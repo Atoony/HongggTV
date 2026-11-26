@@ -1,0 +1,57 @@
+# GitHub Releases 侧载通道的 CI 发布（scripts/release.sh --publish 的云端替代）：
+#   push tag v*   → 构建 release APK（Secrets 注入正式签名）→ 自动建 Release 并上传
+#   手动 dispatch → 只构建验证（签名/编译通不通），不建 Release
+# 密钥注入：HGTV_KEYSTORE_B64 = keystore/hgtv.jks 的 base64；其余三键同 properties。
+# 本地构建产物与 CI 构建产物同 commit 同 keystore，内容等价；真机侧载升级依赖签名一致。
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 还原正式签名密钥
+        env:
+          HGTV_KEYSTORE_B64: ${{ secrets.HGTV_KEYSTORE_B64 }}
+          HGTV_STORE_PASSWORD: ${{ secrets.HGTV_STORE_PASSWORD }}
+          HGTV_KEY_ALIAS: ${{ secrets.HGTV_KEY_ALIAS }}
+          HGTV_KEY_PASSWORD: ${{ secrets.HGTV_KEY_PASSWORD }}
+        run: |
+          mkdir -p keystore
+          printf '%s' "$HGTV_KEYSTORE_B64" | base64 -d > keystore/hgtv.jks
+          printf 'storeFile=keystore/hgtv.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$HGTV_STORE_PASSWORD" "$HGTV_KEY_ALIAS" "$HGTV_KEY_PASSWORD" \
+            > keystore/hgtv-release.properties
+
+      - name: 构建 release
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: 按发布命名规则产出 dist/
+        run: |
+          VER=$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)
+          CODE=$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts | head -1)
+          SHA=$(git rev-parse --short HEAD)
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/hgtv-v${VER}+${CODE}-g${SHA}.apk"
+          ls -la dist/
+
+      - name: 上传 Release（仅 tag 触发；dispatch 只验证构建）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          body: |
+            Android TV 侧载 APK，minSdk 21。CI 自动构建于 tag ${{ github.ref_name }}。
