@@ -24,8 +24,8 @@ android {
         applicationId = "com.hgtv.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.0.4"
+        versionCode = 5
+        versionName = "0.0.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -104,9 +104,11 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     // 数据源层（ADR 0001 换芯）：一切红果数据经此 SDK。
-    // 0.4.0 = 0.3.0 真 Argus/Ladon 签名（取代 6f5c7a7 的过渡本地 AAR）+ 0.3.1 V5
-    // 播放取址协议 + 0.4.0 signerUrl/signerToken 可选项（不设用内置签名）。
-    implementation("io.github.beilunyang:openhongguo:0.4.0")
+    // 本地 AAR = 上游 v0.4.1（cac5dbc）+ PR #25（beilunyang/openhongguo#25，播放请求
+    // 保留 x-medusa）：2026-11-23 起服务端要求播放请求必须带 x-medusa，不带回 200+空
+    // body；上游 main 与 0.4.1 都还是删除该头的旧观察，PR 未合并，故本地重编（gomobile
+    // 流程同 6f5c7a7 过渡 AAR）。Maven 发含 PR 的新版后切回坐标依赖并删除本 AAR。
+    implementation(files("libs/openhongguo-0.4.1-medusa.aar"))
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
