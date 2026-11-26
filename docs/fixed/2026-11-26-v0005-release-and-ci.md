@@ -49,6 +49,13 @@
 - gradle 自动装 SDK 组件失败留下**空残骸目录**（仅 .installer）→ `rm -rf` 被安全分类器拒绝时，改 compileSdk/显式 buildToolsVersion 绕开，不强删。
 - 绑定工程 gradle 直连 google() TLS 握手失败 → 抄主工程的阿里云镜像 settings 配置。
 
+## 9. CI 首跑 1 分钟失败：`./gradlew: Permission denied`（exit 126）
+
+- **现象**：dispatch 验证构建，checkout/setup-java/keystore 还原全绿，`./gradlew` 步骤秒挂，exit 126。
+- **根因**：Windows 下 `git core.fileMode=false`，历史上提交的 `gradlew` 文件模式是 **100644**（无执行位）；Linux runner checkout 后无执行权限。本地跑得欢是因为 Windows 根本不校验这一位——坑只在 Linux CI 上爆。
+- **解法（双保险）**：`git update-index --chmod=+x gradlew` 治本（100644→100755），同时 workflow 构建步骤前加 `chmod +x gradlew` 防御未来 Windows 提交再丢位。
+- **教训**：Windows 主机的仓库给跨平台仓库提交可执行脚本时，提交后务必 `git ls-files -s <file>` 核对模式。
+
 ## CI 发布管线（本次落成）
 
 - `.github/workflows/release.yml`：`push tag v*` → 自动构建正式签名 APK → 建Release 传产物；`workflow_dispatch` 仅构建验证不发布。
